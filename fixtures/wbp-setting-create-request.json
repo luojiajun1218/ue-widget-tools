@@ -1,0 +1,7 @@
+{
+  "command": "createWidgetBlueprint",
+  "transactionId": "create-wbp-setting",
+  "payload": {
+    "assetPath": "/Game/MistyPlanet/UI/WBP_Setting"
+  }
+}

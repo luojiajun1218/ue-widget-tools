@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+
+# Unreal generated outputs
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+
+# Local editor/system files
+.vs/
+.idea/
+*.suo
+*.user

@@ -1,0 +1,29 @@
+{
+  "assetPath": "/Game/MistyPlanet/UI/WBP_MWB_Test",
+  "root": {
+    "type": "CanvasPanel",
+    "name": "RootCanvas",
+    "children": [
+      {
+        "type": "TextBlock",
+        "name": "TitleText",
+        "text": "WidgetBridge",
+        "slot": {
+          "position": [80, 64],
+          "size": [520, 64],
+          "zOrder": 1
+        }
+      },
+      {
+        "type": "Button",
+        "name": "CloseButton",
+        "isVariable": true,
+        "slot": {
+          "position": [1720, 64],
+          "size": [120, 64],
+          "zOrder": 2
+        }
+      }
+    ]
+  }
+}
