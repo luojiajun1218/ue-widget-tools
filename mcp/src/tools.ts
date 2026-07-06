@@ -4,18 +4,25 @@ import { ZodError } from "zod";
 import { BridgeClient } from "./bridgeClient.js";
 import { generateWidgetCpp } from "./cppGenerator.js";
 import { writeWidgetCpp } from "./cppWriter.js";
+import { compileWidgetDesign, type CompileWidgetDesignInput as DesignCompilerInput } from "./designCompiler.js";
+import { compileWidgetDsl } from "./widgetDsl.js";
+import { renderWidgetPreview } from "./widgetPreview.js";
 import { buildProjectCpp } from "./projectBuilder.js";
 import { closeEditor, openEditor, rebuildCppWithEditorRestart } from "./ueLifecycle.js";
 import { validateWidgetLayoutQuality } from "./layoutQuality.js";
+import { validateWidgetReview } from "./widgetReviewQuality.js";
 import {
   bridgeCommandNames,
   isToolName,
   parseToolInput,
   type BuildCppInput,
+  type ApplyWidgetDslInput,
   type CloseEditorInput,
+  type CompileWidgetDslInput,
   type GenerateWidgetCppInput,
   type OpenEditorInput,
   type RebuildCppWithEditorRestartInput,
+  type ReviewWidgetDslInput,
   type ValidateWidgetLayoutInput,
   type WriteWidgetCppInput,
   type ToolName
@@ -140,6 +147,120 @@ export const mcpTools: Tool[] = [
       ["layout"]
     ),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.compile_widget_design",
+    description:
+      "Compile structured Widget Design IR into UMG layout spec, HTML preview, and loss report without modifying Unreal assets.",
+    inputSchema: objectSchema(
+      {
+        design: { type: "object", additionalProperties: true }
+      },
+      ["design"]
+    ),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.compile_widget_dsl",
+    description:
+      "Compile UMG-like Widget TSX/DSL source into Widget Design IR, UMG layout spec, HTML preview, and diagnostics without modifying Unreal assets.",
+    inputSchema: objectSchema(
+      {
+        source: {
+          type: "string",
+          description: "UMG-like Widget DSL source, using components such as Canvas, Border, Tabs, Tab, SettingRow, Slider, Toggle, and Select."
+        }
+      },
+      ["source"]
+    ),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.review_widget_dsl",
+    description:
+      "Compile UMG-like Widget TSX/DSL source and return design IR, UMG layout, web review HTML, diagnostics, loss report, and layout quality without modifying Unreal assets.",
+    inputSchema: objectSchema(
+      {
+        source: {
+          type: "string",
+          description: "UMG-like Widget DSL source to review."
+        },
+        profile: {
+          type: "string",
+          enum: ["settings", "hud", "menu", "generic"],
+          description: "Layout quality profile to validate against."
+        }
+      },
+      ["source"]
+    ),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.apply_widget_dsl",
+    description:
+      "Compile, review, apply, bind events, and finalize a Widget Blueprint from UMG-like Widget TSX/DSL source.",
+    inputSchema: objectSchema(
+      {
+        assetPath: assetPathProperty,
+        source: {
+          type: "string",
+          description: "UMG-like Widget DSL source to compile and apply."
+        },
+        profile: {
+          type: "string",
+          enum: ["settings", "hud", "menu", "generic"],
+          description: "Layout quality profile to validate against."
+        },
+        compile: { type: "boolean", description: "Compile the Widget Blueprint before saving." },
+        save: { type: "boolean", description: "Save the Widget Blueprint package." },
+        inspect: { type: "boolean", description: "Return the WidgetTree after finalizing." },
+        transactionId: transactionIdProperty,
+        bindings: {
+          type: "object",
+          properties: {
+            buttons: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { widget: { type: "string" }, function: { type: "string" } },
+                required: ["widget", "function"],
+                additionalProperties: false
+              }
+            },
+            sliders: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { widget: { type: "string" }, function: { type: "string" } },
+                required: ["widget", "function"],
+                additionalProperties: false
+              }
+            },
+            checkboxes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { widget: { type: "string" }, function: { type: "string" } },
+                required: ["widget", "function"],
+                additionalProperties: false
+              }
+            },
+            comboboxes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { widget: { type: "string" }, function: { type: "string" } },
+                required: ["widget", "function"],
+                additionalProperties: false
+              }
+            }
+          },
+          additionalProperties: false
+        }
+      },
+      ["assetPath", "source"]
+    ),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
   },
   {
     name: "ue.ui.bind_button_clicked_to_function",
@@ -387,6 +508,14 @@ export async function dispatchTool(
           ? generateWidgetCpp(input as GenerateWidgetCppInput)
           : name === "ue.ui.validate_widget_layout"
             ? validateWidgetLayoutQuality(input as ValidateWidgetLayoutInput)
+            : name === "ue.ui.compile_widget_design"
+              ? compileWidgetDesign(input as unknown as DesignCompilerInput)
+            : name === "ue.ui.compile_widget_dsl"
+              ? compileWidgetDslAndDesign(input as CompileWidgetDslInput)
+            : name === "ue.ui.review_widget_dsl"
+              ? reviewWidgetDsl(input as ReviewWidgetDslInput)
+              : name === "ue.ui.apply_widget_dsl"
+                ? await applyWidgetDsl(input as ApplyWidgetDslInput, client)
           : name === "ue.ui.write_widget_cpp"
             ? writeWidgetCpp(input as WriteWidgetCppInput)
           : name === "ue.project.build_cpp"
@@ -403,6 +532,129 @@ export async function dispatchTool(
   } catch (error) {
     return errorResult(formatError(error));
   }
+}
+
+function compileWidgetDslAndDesign(input: CompileWidgetDslInput): unknown {
+  const dslResult = compileWidgetDsl(input);
+  const compiled = compileWidgetDesign({ design: dslResult.design });
+
+  return {
+    design: dslResult.design,
+    layout: compiled.layout,
+    html: renderWidgetPreview({ design: dslResult.design }),
+    diagnostics: dslResult.diagnostics,
+    lossReport: compiled.lossReport
+  };
+}
+
+function reviewWidgetDsl(input: ReviewWidgetDslInput): unknown {
+  const compiled = compileWidgetDslAndDesign(input) as {
+    design: ReturnType<typeof compileWidgetDsl>["design"];
+    layout: ReturnType<typeof compileWidgetDesign>["layout"];
+    html: string;
+    diagnostics: ReturnType<typeof compileWidgetDsl>["diagnostics"];
+    lossReport: ReturnType<typeof compileWidgetDesign>["lossReport"];
+  };
+
+  return {
+    ...compiled,
+    quality: validateWidgetLayoutQuality({
+      layout: compiled.layout,
+      profile: input.profile ?? "generic",
+      viewport: compiled.design.viewport ?? { width: 1280, height: 720 }
+    }),
+    reviewQuality: validateWidgetReview({
+      html: compiled.html,
+      viewport: compiled.design.viewport ?? { width: 1280, height: 720 }
+    })
+  };
+}
+
+async function applyWidgetDsl(input: ApplyWidgetDslInput, client: BridgeLike): Promise<unknown> {
+  const reviewed = reviewWidgetDsl(input) as {
+    design: ReturnType<typeof compileWidgetDsl>["design"];
+    layout: ReturnType<typeof compileWidgetDesign>["layout"];
+    html: string;
+    diagnostics: ReturnType<typeof compileWidgetDsl>["diagnostics"];
+    lossReport: ReturnType<typeof compileWidgetDesign>["lossReport"];
+    quality: ReturnType<typeof validateWidgetLayoutQuality>;
+    reviewQuality: ReturnType<typeof validateWidgetReview>;
+  };
+  const qualityErrors = reviewed.quality.issues.filter((issue) => issue.severity === "error");
+  const reviewErrors = reviewed.reviewQuality.issues.filter((issue) => issue.severity === "error");
+
+  if (reviewed.diagnostics.length > 0 || reviewed.lossReport.length > 0 || qualityErrors.length > 0 || reviewErrors.length > 0) {
+    return {
+      blocked: true,
+      ...reviewed,
+      qualityErrors,
+      reviewErrors
+    };
+  }
+
+  const transactionId = input.transactionId;
+  const applyLayout = await client.sendCommand({
+    command: "applyWidgetLayout",
+    transactionId,
+    payload: {
+      assetPath: input.assetPath,
+      layout: reviewed.layout
+    }
+  });
+  const bindingResults = [];
+
+  for (const binding of input.bindings.buttons) {
+    bindingResults.push(await sendBindingCommand(client, transactionId, "bindButtonClickedToFunction", input.assetPath, "buttonName", binding));
+  }
+  for (const binding of input.bindings.sliders) {
+    bindingResults.push(await sendBindingCommand(client, transactionId, "bindSliderValueChangedToFunction", input.assetPath, "sliderName", binding));
+  }
+  for (const binding of input.bindings.checkboxes) {
+    bindingResults.push(await sendBindingCommand(client, transactionId, "bindCheckBoxChangedToFunction", input.assetPath, "checkboxName", binding));
+  }
+  for (const binding of input.bindings.comboboxes) {
+    bindingResults.push(await sendBindingCommand(client, transactionId, "bindComboBoxSelectionChangedToFunction", input.assetPath, "comboboxName", binding));
+  }
+
+  const finalize = await client.sendCommand({
+    command: "finalizeWidget",
+    transactionId,
+    payload: {
+      assetPath: input.assetPath,
+      compile: input.compile,
+      save: input.save,
+      inspect: input.inspect
+    }
+  });
+
+  return {
+    blocked: false,
+    ...reviewed,
+    bridge: {
+      applyLayout,
+      bindings: bindingResults,
+      finalize
+    }
+  };
+}
+
+function sendBindingCommand(
+  client: BridgeLike,
+  transactionId: string | undefined,
+  command: string,
+  assetPath: string,
+  widgetKey: "buttonName" | "sliderName" | "checkboxName" | "comboboxName",
+  binding: { widget: string; function: string }
+): Promise<unknown> {
+  return client.sendCommand({
+    command,
+    transactionId,
+    payload: {
+      assetPath,
+      [widgetKey]: binding.widget,
+      functionName: binding.function
+    }
+  });
 }
 
 async function dispatchBridgeCommand(

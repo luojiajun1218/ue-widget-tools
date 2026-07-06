@@ -118,4 +118,170 @@ describe("MCP tool dispatch", () => {
       }
     });
   });
+
+  it("compiles widget design locally without calling the bridge", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.compile_widget_design",
+      {
+        design: {
+          name: "MenuPrototype",
+          root: {
+            type: "screen",
+            name: "MenuScreen",
+            children: [
+              { type: "button", name: "StartButton", text: "Start", variant: "primary" }
+            ]
+          }
+        }
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).not.toHaveBeenCalled();
+    expect(result.content[0]?.type).toBe("text");
+    const [content] = result.content;
+    expect(content.type).toBe("text");
+    if (content.type === "text") {
+      expect(content.text).toContain("StartButton");
+    }
+  });
+
+  it("compiles UMG-like widget DSL locally without calling the bridge", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.compile_widget_dsl",
+      {
+        source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" variant="primary" /></Canvas>'
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).not.toHaveBeenCalled();
+    expect(result.content[0]?.type).toBe("text");
+    const [content] = result.content;
+    expect(content.type).toBe("text");
+    if (content.type === "text") {
+      expect(content.text).toContain("StartButton");
+      expect(content.text).toContain("layout");
+    }
+  });
+
+  it("reviews UMG-like widget DSL locally with layout quality without calling the bridge", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.review_widget_dsl",
+      {
+        profile: "menu",
+        source: '<Canvas name="MenuScreen" width={1280} height={720}><Button name="StartButton" text="Start" variant="primary" /></Canvas>'
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).not.toHaveBeenCalled();
+    const [content] = result.content;
+    expect(content.type).toBe("text");
+    if (content.type === "text") {
+      const payload = JSON.parse(content.text);
+      expect(payload.layout.root.name).toBe("MenuScreen");
+      expect(payload.html).toContain("StartButton");
+      expect(payload.quality.ok).toBe(true);
+      expect(payload.reviewQuality.ok).toBe(true);
+      expect(payload.diagnostics).toEqual([]);
+    }
+  });
+
+  it("applies reviewed widget DSL, bindings, and finalizes through the bridge", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.apply_widget_dsl",
+      {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Menu",
+        source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" variant="primary" /></Canvas>',
+        transactionId: "apply-dsl-test",
+        bindings: {
+          buttons: [{ widget: "StartButton", function: "HandleStartClicked" }]
+        }
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).toHaveBeenNthCalledWith(1, {
+      command: "applyWidgetLayout",
+      transactionId: "apply-dsl-test",
+      payload: {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Menu",
+        layout: expect.objectContaining({
+          root: expect.objectContaining({ name: "MenuScreen" })
+        })
+      }
+    });
+    expect(client.sendCommand).toHaveBeenNthCalledWith(2, {
+      command: "bindButtonClickedToFunction",
+      transactionId: "apply-dsl-test",
+      payload: {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Menu",
+        buttonName: "StartButton",
+        functionName: "HandleStartClicked"
+      }
+    });
+    expect(client.sendCommand).toHaveBeenNthCalledWith(3, {
+      command: "finalizeWidget",
+      transactionId: "apply-dsl-test",
+      payload: {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Menu",
+        compile: true,
+        save: true,
+        inspect: false
+      }
+    });
+  });
+
+  it("blocks widget DSL apply when local review reports diagnostics", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.apply_widget_dsl",
+      {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Menu",
+        source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" unknownAttr="x" /></Canvas>'
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).not.toHaveBeenCalled();
+    const [content] = result.content;
+    expect(content.type).toBe("text");
+    if (content.type === "text") {
+      const payload = JSON.parse(content.text);
+      expect(payload.blocked).toBe(true);
+      expect(payload.diagnostics).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: "UNSUPPORTED_ATTRIBUTE" })])
+      );
+    }
+  });
 });

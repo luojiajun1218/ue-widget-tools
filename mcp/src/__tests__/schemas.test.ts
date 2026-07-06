@@ -45,6 +45,10 @@ describe("Misty UI MCP schemas", () => {
         "ue.ui.write_widget_cpp",
         "ue.ui.finalize_widget",
         "ue.ui.validate_widget_layout",
+        "ue.ui.compile_widget_design",
+        "ue.ui.compile_widget_dsl",
+        "ue.ui.review_widget_dsl",
+        "ue.ui.apply_widget_dsl",
         "ue.project.build_cpp",
         "ue.project.close_editor",
         "ue.project.open_editor",
@@ -150,5 +154,60 @@ describe("Misty UI MCP schemas", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("accepts structured widget design compilation input", () => {
+    const result = toolInputSchemas["ue.ui.compile_widget_design"].safeParse({
+      design: {
+        name: "MenuPrototype",
+        root: {
+          type: "screen",
+          name: "MenuScreen",
+          children: [
+            { type: "button", name: "StartButton", text: "Start", variant: "primary" }
+          ]
+        }
+      }
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts UMG-like widget DSL compilation input", () => {
+    const result = toolInputSchemas["ue.ui.compile_widget_dsl"].safeParse({
+      source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" /></Canvas>'
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts UMG-like widget DSL review input with quality profile", () => {
+    const result = toolInputSchemas["ue.ui.review_widget_dsl"].safeParse({
+      source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" /></Canvas>',
+      profile: "menu"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts widget DSL apply input with defaults and event bindings", () => {
+    const result = toolInputSchemas["ue.ui.apply_widget_dsl"].safeParse({
+      assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
+      source: '<Canvas name="MenuScreen"><Button name="ApplyButton" text="Apply" /></Canvas>',
+      bindings: {
+        buttons: [{ widget: "ApplyButton", function: "HandleApplyClicked" }],
+        sliders: [{ widget: "VolumeSlider", function: "HandleVolumeChanged" }],
+        checkboxes: [{ widget: "FullscreenCheckBox", function: "HandleFullscreenChanged" }],
+        comboboxes: [{ widget: "ResolutionComboBox", function: "HandleResolutionChanged" }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.profile).toBe("generic");
+      expect(result.data.compile).toBe(true);
+      expect(result.data.save).toBe(true);
+      expect(result.data.inspect).toBe(false);
+    }
   });
 });

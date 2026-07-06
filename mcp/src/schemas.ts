@@ -68,6 +68,71 @@ export const validateWidgetLayoutSchema = z
   })
   .strict();
 
+export const compileWidgetDesignSchema = z
+  .object({
+    design: z
+      .object({
+        name: z.string().min(1),
+        viewport: z
+          .object({
+            width: z.number().positive(),
+            height: z.number().positive()
+          })
+          .optional(),
+        theme: z
+          .object({
+            colors: z.record(z.string()).optional(),
+            spacing: z.number().positive().optional()
+          })
+          .passthrough()
+          .optional(),
+        root: z.record(z.unknown())
+      })
+      .passthrough()
+  })
+  .strict();
+
+export const compileWidgetDslSchema = z
+  .object({
+    source: z.string().min(1)
+  })
+  .strict();
+
+export const reviewWidgetDslSchema = z
+  .object({
+    source: z.string().min(1),
+    profile: z.enum(["settings", "hud", "menu", "generic"]).default("generic")
+  })
+  .strict();
+
+const widgetDslBindingSchema = z
+  .object({
+    widget: z.string().min(1),
+    function: z.string().min(1)
+  })
+  .strict();
+
+export const applyWidgetDslSchema = z
+  .object({
+    assetPath: uiAssetPathSchema,
+    source: z.string().min(1),
+    profile: z.enum(["settings", "hud", "menu", "generic"]).default("generic"),
+    compile: z.boolean().default(true),
+    save: z.boolean().default(true),
+    inspect: z.boolean().default(false),
+    transactionId: transactionIdSchema,
+    bindings: z
+      .object({
+        buttons: z.array(widgetDslBindingSchema).default([]),
+        sliders: z.array(widgetDslBindingSchema).default([]),
+        checkboxes: z.array(widgetDslBindingSchema).default([]),
+        comboboxes: z.array(widgetDslBindingSchema).default([])
+      })
+      .strict()
+      .default({})
+  })
+  .strict();
+
 export const bindButtonClickedToFunctionSchema = z
   .object({
     assetPath: uiAssetPathSchema,
@@ -205,6 +270,10 @@ export type CloseEditorInput = z.input<typeof closeEditorSchema>;
 export type OpenEditorInput = z.input<typeof openEditorSchema>;
 export type RebuildCppWithEditorRestartInput = z.input<typeof rebuildCppWithEditorRestartSchema>;
 export type ValidateWidgetLayoutInput = z.input<typeof validateWidgetLayoutSchema>;
+export type CompileWidgetDesignInput = z.input<typeof compileWidgetDesignSchema>;
+export type CompileWidgetDslInput = z.input<typeof compileWidgetDslSchema>;
+export type ReviewWidgetDslInput = z.input<typeof reviewWidgetDslSchema>;
+export type ApplyWidgetDslInput = z.output<typeof applyWidgetDslSchema>;
 
 export const toolInputSchemas = {
   "ue.project.status": projectStatusSchema,
@@ -213,6 +282,10 @@ export const toolInputSchemas = {
   "ue.ui.set_widget_parent_class": setWidgetParentClassSchema,
   "ue.ui.apply_widget_layout": applyWidgetLayoutSchema,
   "ue.ui.validate_widget_layout": validateWidgetLayoutSchema,
+  "ue.ui.compile_widget_design": compileWidgetDesignSchema,
+  "ue.ui.compile_widget_dsl": compileWidgetDslSchema,
+  "ue.ui.review_widget_dsl": reviewWidgetDslSchema,
+  "ue.ui.apply_widget_dsl": applyWidgetDslSchema,
   "ue.ui.bind_button_clicked_to_function": bindButtonClickedToFunctionSchema,
   "ue.ui.bind_slider_value_changed_to_function": bindSliderValueChangedToFunctionSchema,
   "ue.ui.bind_checkbox_changed_to_function": bindCheckboxChangedToFunctionSchema,

@@ -178,7 +178,7 @@ function visit(node: LayoutNode | undefined, stats: LayoutStats): void {
   }
 
   const slot = isRecord(node.slot) ? node.slot : node;
-  if (isRecord(slot) && ("anchors" in slot || "position" in slot || "size" in slot)) {
+  if (isRecord(slot) && ("anchors" in slot || "position" in slot)) {
     stats.canvasSlotCount += 1;
     if ("anchors" in slot && "alignment" in slot && "size" in slot) {
       stats.responsiveCanvasSlotCount += 1;

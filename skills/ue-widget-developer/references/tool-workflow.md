@@ -9,15 +9,64 @@ Use the private MCP bridge tools in this order. Keep every asset path inside `/G
 3. For non-trivial widgets, call `ue.ui.generate_widget_cpp` to preview the C++ base class, then `ue.ui.write_widget_cpp` to write it under the generated UI C++ folders.
 4. Compile the project so the C++ class is available. Prefer `ue.project.rebuild_cpp_with_editor_restart` for normal UBT rebuilds because it closes UE, builds, and reopens UE automatically.
 5. Call `ue.ui.create_widget_blueprint` with `parentClass`, or `ue.ui.set_widget_parent_class` for an existing Widget Blueprint.
-6. Draft the final layout spec and run a style/layout pass before writing asset changes.
-7. Call `ue.ui.validate_widget_layout`. Use `profile: "settings"` for settings/menu settings panels. Fix all errors before writing.
-8. Call `ue.ui.create_widget_blueprint` or `ue.ui.apply_widget_layout`.
-9. Bind supported events with the matching bridge binding tool.
-10. Call `ue.ui.finalize_widget` with `compile: true`, `save: true`, and `inspect: true`.
+6. For new non-trivial UI, draft Widget DSL. Treat the DSL as the source protocol; do not use HTML as source.
+7. Call `ue.ui.review_widget_dsl`. Use `profile: "settings"` for settings/menu settings panels. Fix all `diagnostics`, `lossReport`, `quality`, and `reviewQuality` errors before writing.
+8. Show or inspect the generated web review HTML before writing. If user approval is part of the task, wait for approval here.
+9. Prefer `ue.ui.apply_widget_dsl` with explicit bindings. It reviews, applies, binds, and finalizes in one guarded sequence.
+10. For hand-authored layout JSON only, call `ue.ui.validate_widget_layout`, then `ue.ui.apply_widget_layout`, bind events, and finalize.
 11. Visually inspect the result in Unreal. Do not report completion if the layout is cramped, unstyled, unreadable, or only default UMG controls.
 12. If generated C++ changed, call `ue.project.rebuild_cpp_with_editor_restart` unless you intentionally want to keep UE closed or use Live Coding.
 
 If any step reports warnings or diagnostics, stop and summarize them before making another mutation.
+
+## Widget DSL Review Example
+
+Use this before mutating Unreal assets:
+
+The fullscreen placeholders below are documentation placeholders. Before calling tools, replace them with the current target fullscreen viewport and proportional panel dimensions.
+
+```json
+{
+  "profile": "settings",
+  "source": "<Widget name=\"Settings\"><Canvas name=\"SettingsScreen\" width={FullscreenWidth} height={FullscreenHeight}><Border name=\"SettingsFrame\" width={FullscreenPanelWidth} height={FullscreenPanelHeight} padding={[40,36,40,36]} backgroundColor=\"panel\"><VerticalBox name=\"SettingsLayout\" fill><Text name=\"TitleText\" text=\"SETTINGS\" variant=\"title\" /><SettingRow label=\"Brightness\" labelWidth={320} controlWidth={620}><Slider name=\"BrightnessSlider\" value={0.62} /></SettingRow></VerticalBox></Border></Canvas></Widget>"
+}
+```
+
+A usable review result has:
+
+- `diagnostics: []`
+- `lossReport: []`
+- `quality.ok: true`
+- `reviewQuality.ok: true`
+
+The generated HTML is for review only. The generated layout is the UMG write payload.
+
+## Apply Widget DSL Example
+
+Use this after review passes and the user has accepted the visual direction:
+
+Replace fullscreen placeholders with concrete values before calling the tool.
+
+```json
+{
+  "assetPath": "/Game/MistyPlanet/UI/WBP_Setting",
+  "profile": "settings",
+  "source": "<Widget name=\"Settings\"><Canvas name=\"SettingsScreen\" width={FullscreenWidth} height={FullscreenHeight}><Border name=\"SettingsFrame\" width={FullscreenPanelWidth} height={FullscreenPanelHeight} padding={[40,36,40,36]} backgroundColor=\"panel\"><VerticalBox name=\"SettingsLayout\" fill><SettingRow label=\"Brightness\" labelWidth={320} controlWidth={620}><Slider name=\"BrightnessSlider\" value={0.62} /></SettingRow><HorizontalBox name=\"ActionRow\" alignSelf=\"right\"><Button name=\"ApplyButton\" text=\"Apply\" variant=\"primary\" /></HorizontalBox></VerticalBox></Border></Canvas></Widget>",
+  "bindings": {
+    "buttons": [
+      { "widget": "ApplyButton", "function": "ApplySettings" }
+    ],
+    "sliders": [
+      { "widget": "BrightnessSlider", "function": "HandleBrightnessChanged" }
+    ]
+  },
+  "compile": true,
+  "save": true,
+  "inspect": true
+}
+```
+
+If the tool returns `blocked: true`, do not call lower-level apply/bind/finalize tools. Fix the reported diagnostics or quality issues first.
 
 ## Design Quality Gate
 
@@ -26,7 +75,7 @@ Before applying a non-trivial layout, validate it:
 ```json
 {
   "profile": "settings",
-  "viewport": { "width": 1280, "height": 720 },
+  "viewport": { "width": "<current fullscreen width>", "height": "<current fullscreen height>" },
   "layout": {
     "root": {
       "type": "CanvasPanel",
@@ -43,7 +92,7 @@ The validator rejects settings screens that cram many controls into one unpaged 
 - `ScrollBox` for dense setting rows.
 - Styled buttons and backgrounds, not default gray UMG controls.
 - A clear action row for Apply/Reset/Close.
-- Layout sized for 1280x720 first, then scalable upward.
+- Layout sized for the game's default fullscreen viewport first, then scalable across other fullscreen resolutions.
 
 ## C++ Base Class Example
 
