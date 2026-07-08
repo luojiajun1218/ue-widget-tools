@@ -561,11 +561,11 @@ function reviewWidgetDsl(input: ReviewWidgetDslInput): unknown {
     quality: validateWidgetLayoutQuality({
       layout: compiled.layout,
       profile: input.profile ?? "generic",
-      viewport: compiled.design.viewport ?? { width: 1280, height: 720 }
+      viewport: compiled.design.viewport
     }),
     reviewQuality: validateWidgetReview({
       html: compiled.html,
-      viewport: compiled.design.viewport ?? { width: 1280, height: 720 }
+      viewport: compiled.design.viewport
     })
   };
 }

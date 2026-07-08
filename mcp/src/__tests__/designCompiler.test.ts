@@ -213,8 +213,8 @@ describe("widget design compiler prototype", () => {
         })
       ])
     );
-    expect(result.html).toContain('data-tab="video"');
-    expect(result.html).toContain('data-page="audio"');
+    expect(result.html).toContain('data-widget-tab-button="video"');
+    expect(result.html).toContain('data-widget-tab-page="audio"');
   });
 
   it("adds production slot sizing for settings shell and rows", () => {
@@ -716,5 +716,36 @@ describe("widget design compiler prototype", () => {
     expect(grid).toEqual(expect.objectContaining({ type: "UniformGridPanel", name: "InventoryGrid", columns: 4 }));
     expect((grid.children as Record<string, unknown>[])[0]).toEqual(expect.objectContaining({ type: "Image", name: "SlotImage" }));
     expect(dialog).toEqual(expect.objectContaining({ type: "Border", name: "QuitDialog" }));
+  });
+
+  it("compiles root fill panels to fullscreen Canvas anchors without fixed viewport size", () => {
+    const result = compileWidgetDesign({
+      design: {
+        name: "FullscreenSettings",
+        root: {
+          type: "screen",
+          name: "SettingsScreen",
+          children: [
+            {
+              type: "panel",
+              name: "SettingsRoot",
+              style: { fill: true, backgroundColor: "panel" },
+              children: [{ type: "text", name: "TitleText", text: "设置", variant: "title" }]
+            }
+          ]
+        }
+      }
+    });
+
+    expect((result.layout.root.children as Record<string, unknown>[])[0]).toEqual(
+      expect.objectContaining({
+        name: "SettingsRoot",
+        slot: expect.objectContaining({
+          anchors: { minimum: [0, 0], maximum: [1, 1] },
+          alignment: [0, 0],
+          size: [0, 0]
+        })
+      })
+    );
   });
 });

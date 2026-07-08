@@ -77,7 +77,7 @@ export function validateWidgetLayoutQuality(input: LayoutQualityInput) {
   return {
     ok: !issues.some((issue) => issue.severity === "error"),
     profile,
-    viewport: input.viewport ?? { width: 1280, height: 720 },
+    viewport: input.viewport ?? "fullscreen",
     stats,
     issues
   };

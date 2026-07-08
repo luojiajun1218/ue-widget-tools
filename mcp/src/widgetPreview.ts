@@ -16,7 +16,7 @@ const DEFAULT_COLORS: Record<string, string> = {
 interface PreviewTheme {
   colors: Record<string, string>;
   spacing: number;
-  viewport: {
+  viewport?: {
     width: number;
     height: number;
   };
@@ -26,8 +26,9 @@ export function renderWidgetPreview(input: RenderWidgetPreviewInput): string {
   const theme: PreviewTheme = {
     colors: { ...DEFAULT_COLORS, ...(input.design.theme?.colors ?? {}) },
     spacing: input.design.theme?.spacing ?? 16,
-    viewport: input.design.viewport ?? { width: 1280, height: 720 }
+    ...(input.design.viewport ? { viewport: input.design.viewport } : {})
   };
+  const preview = previewFrame(theme);
 
   return `<!doctype html>
 <html>
@@ -36,17 +37,19 @@ export function renderWidgetPreview(input: RenderWidgetPreviewInput): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(input.design.name)}</title>
   <style>
+    :root { --widget-preview-scale: ${preview.scaleCss}; }
     *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: #0B1117; color: ${theme.colors.text}; font-family: Segoe UI, Arial, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% 0%, #17232E 0, #0B1117 48%, #06090D 100%); color: ${theme.colors.text}; font-family: Segoe UI, Arial, sans-serif; }
     button, input, select { font: inherit; }
     button { border: 0; cursor: pointer; }
     [hidden] { display: none !important; }
     .widget-review-shell { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 18px; }
-    .widget-review-header { width: ${px(theme.viewport.width)}; max-width: calc(100vw - 36px); display: flex; align-items: center; justify-content: space-between; color: #B7C2CC; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+    .widget-review-header { width: ${preview.headerWidthCss}; max-width: calc(100vw - 36px); display: flex; align-items: center; justify-content: space-between; color: #B7C2CC; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+    .widget-review-help { width: ${preview.headerWidthCss}; max-width: calc(100vw - 36px); color: ${theme.colors.muted}; font-size: 12px; }
     .widget-review-source { color: ${theme.colors.text}; font-weight: 700; }
     .widget-review-viewport { color: ${theme.colors.muted}; }
-    .widget-viewport-frame { flex: 0 0 auto; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,.36); border: 1px solid rgba(255,255,255,.14); background: ${theme.colors.background}; }
-    .widget-screen { display: grid; place-items: center; overflow: hidden; }
+    .widget-viewport-frame { flex: 0 0 auto; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,.36); border: 1px solid rgba(255,255,255,.14); background: ${theme.colors.background}; transform:scale(var(--widget-preview-scale)); transform-origin:center center; }
+    .widget-screen { position: relative; overflow: hidden; }
     .widget-panel { border: 1px solid rgba(255,255,255,.1); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
     .widget-text { color: ${theme.colors.text}; }
     .widget-text.muted { color: ${theme.colors.muted}; }
@@ -65,10 +68,10 @@ export function renderWidgetPreview(input: RenderWidgetPreviewInput): string {
     .widget-select { width: 100%; min-height: 36px; background: #101820; color: ${theme.colors.text}; border: 1px solid rgba(255,255,255,.16); padding: 6px 10px; }
   </style>
 </head>
-<body><div class="widget-review-shell"><div class="widget-review-header" aria-label="Widget preview metadata"><span class="widget-review-source">${escapeHtml(input.design.name)}</span><span class="widget-review-viewport">${theme.viewport.width} x ${theme.viewport.height}</span></div><div class="widget-viewport-frame" style="${styleText([
-    ["width", px(theme.viewport.width)],
-    ["height", px(theme.viewport.height)]
-  ])}">${renderNode(input.design.root, theme, true)}</div></div>
+<body><main class="widget-review-shell" data-preview-mode="${preview.mode}"><div class="widget-review-header" aria-label="Widget preview metadata"><span class="widget-review-source">${escapeHtml(input.design.name)}</span><span class="widget-review-viewport">${escapeHtml(preview.label)}</span></div><div class="widget-review-help">Open this file directly in a browser. Fullscreen Widget DSL uses fill-parent semantics; numeric frame sizes are preview-only when present.</div><div class="widget-viewport-frame" style="${styleText([
+    ["width", preview.frameWidthCss],
+    ["height", preview.frameHeightCss]
+  ])}">${renderNode(input.design.root, theme, { isRootChild: true })}</div></main>
   <script>
     (() => {
       const buttons = Array.from(document.querySelectorAll('[data-widget-tab-button]'));
@@ -92,15 +95,20 @@ export function renderWidgetPreview(input: RenderWidgetPreviewInput): string {
 </html>`;
 }
 
-function renderNode(node: DesignNode, theme: PreviewTheme, isRootChild = false): string {
+interface RenderContext {
+  isRootChild?: boolean;
+  rootChildIndex?: number;
+}
+
+function renderNode(node: DesignNode, theme: PreviewTheme, context: RenderContext = {}): string {
   const children = (node.children ?? []).map((child) => renderNode(child, theme)).join("");
   const dataNode = escapeAttribute(node.name);
 
   switch (node.type) {
     case "screen":
-      return `<div class="widget-screen" data-node="${dataNode}" style="${screenStyle(theme)}">${children}</div>`;
+      return `<div class="widget-screen" data-node="${dataNode}" style="${screenStyle(theme)}">${(node.children ?? []).map((child, index) => renderNode(child, theme, { isRootChild: true, rootChildIndex: index })).join("")}</div>`;
     case "panel":
-      return `<section class="widget-panel" data-node="${dataNode}" style="${panelStyle(node, theme, isRootChild)}">${children}</section>`;
+      return `<section class="widget-panel" data-node="${dataNode}" style="${panelStyle(node, theme, context)}">${children}</section>`;
     case "stack":
       return `<div class="widget-stack" data-node="${dataNode}" style="${stackStyle(node, theme)}">${children}</div>`;
     case "row":
@@ -179,7 +187,9 @@ function renderTabs(node: DesignNode, theme: PreviewTheme): string {
     `<section data-node="${escapeAttribute(node.name)}Switcher" style="${styleText([
       ["flex", "1 1 auto"],
       ["min-width", "0"],
-      ["padding", paddingCss(contentPadding)]
+      ["padding", paddingCss(contentPadding)],
+      ["height", "100%"],
+      ["min-height", "0"]
     ])}">${tabs.map((tab, index) => renderTabPage(tab, index, theme)).join("")}</section></div>`;
 }
 
@@ -192,10 +202,22 @@ function renderTabButton(tab: DesignTab, index: number, buttonHeight: number): s
 
 function renderTabPage(tab: DesignTab, index: number, theme: PreviewTheme): string {
   const children = (tab.children ?? []).map((child) => renderNode(child, theme)).join("");
-  return `<div class="widget-tab-page" data-node="${escapeAttribute(tab.pageName)}" data-widget-tab-page="${escapeAttribute(tab.id)}"${index === 0 ? "" : " hidden"}>${children}</div>`;
+  return `<div class="widget-tab-page" data-node="${escapeAttribute(tab.pageName)}" data-widget-tab-page="${escapeAttribute(tab.id)}" style="${styleText([
+    ["height", "100%"],
+    ["min-height", "0"],
+    ["overflow", "auto"]
+  ])}"${index === 0 ? "" : " hidden"}>${children}</div>`;
 }
 
 function screenStyle(theme: PreviewTheme): string {
+  if (!theme.viewport) {
+    return styleText([
+      ["width", "100%"],
+      ["height", "100%"],
+      ["background", theme.colors.background]
+    ]);
+  }
+
   return styleText([
     ["width", px(theme.viewport.width)],
     ["height", px(theme.viewport.height)],
@@ -203,18 +225,59 @@ function screenStyle(theme: PreviewTheme): string {
   ]);
 }
 
-function panelStyle(node: DesignNode, theme: PreviewTheme, isRootChild: boolean): string {
+function panelStyle(node: DesignNode, theme: PreviewTheme, context: RenderContext): string {
   const style = node.style ?? {};
-  const width = typeof style.width === "number" ? style.width : isRootChild ? Math.min(1040, Math.max(320, theme.viewport.width - 160)) : undefined;
-  const height = typeof style.height === "number" ? style.height : isRootChild ? Math.min(620, Math.max(240, theme.viewport.height - 100)) : undefined;
+  const isRootChild = context.isRootChild === true;
+  const viewport = theme.viewport ?? { width: 0, height: 0 };
+  const isRootFill = isRootChild && style.fill === true;
+  const width = typeof style.width === "number" ? style.width : isRootChild && theme.viewport && !isRootFill ? Math.min(1040, Math.max(320, theme.viewport.width - 160)) : undefined;
+  const height = typeof style.height === "number" ? style.height : isRootChild && theme.viewport && !isRootFill ? Math.min(620, Math.max(240, theme.viewport.height - 100)) : undefined;
+  const isFullViewportCover = isRootFill || (isRootChild && theme.viewport !== undefined && width === theme.viewport.width && height === theme.viewport.height);
+  const align = typeof style.alignSelf === "string" ? style.alignSelf : "center";
+  const valign = typeof style.valignSelf === "string" ? style.valignSelf : "center";
 
   return styleText([
+    ["position", isRootChild ? "absolute" : undefined],
+    ["inset", isFullViewportCover ? "0" : undefined],
+    ["left", isRootChild && !isFullViewportCover ? positionedOffset(align, width, viewport.width) : undefined],
+    ["top", isRootChild && !isFullViewportCover ? positionedOffset(valign, height, viewport.height) : undefined],
+    ["transform", isRootChild && !isFullViewportCover && needsCenterTransform(align, valign) ? centerTransform(align, valign) : undefined],
+    ["z-index", isRootChild ? String(context.rootChildIndex ?? 0) : undefined],
     ["background", resolveColor(style.backgroundColor, theme.colors, "panel")],
     ["padding", paddingCss(normalizePadding(style.padding, theme.spacing))],
     ["width", width === undefined ? undefined : px(width)],
     ["height", height === undefined ? undefined : px(height)],
     ["min-height", "0"]
   ]);
+}
+
+function previewFrame(theme: PreviewTheme): {
+  mode: "fixed" | "fullscreen";
+  label: string;
+  scaleCss: string;
+  headerWidthCss: string;
+  frameWidthCss: string;
+  frameHeightCss: string;
+} {
+  if (!theme.viewport) {
+    return {
+      mode: "fullscreen",
+      label: "fullscreen / fill-parent",
+      scaleCss: "1",
+      headerWidthCss: "calc(100vw - 36px)",
+      frameWidthCss: "calc(100vw - 36px)",
+      frameHeightCss: "calc(100vh - 96px)"
+    };
+  }
+
+  return {
+    mode: "fixed",
+    label: `${theme.viewport.width} x ${theme.viewport.height}`,
+    scaleCss: `min(1, calc((100vw - 36px) / ${theme.viewport.width}), calc((100vh - 78px) / ${theme.viewport.height}))`,
+    headerWidthCss: px(theme.viewport.width),
+    frameWidthCss: px(theme.viewport.width),
+    frameHeightCss: px(theme.viewport.height)
+  };
 }
 
 function stackStyle(node: DesignNode, theme: PreviewTheme): string {
@@ -224,6 +287,8 @@ function stackStyle(node: DesignNode, theme: PreviewTheme): string {
     ["display", "flex"],
     ["flex-direction", direction === "horizontal" ? "row" : "column"],
     ["gap", px(numberOr(node.gap, theme.spacing))],
+    ["flex", style.grow === true ? "1 1 0" : undefined],
+    ["min-width", style.grow === true ? "0" : undefined],
     ["height", style.fill === true ? "100%" : undefined],
     ["min-height", style.fill === true ? "0" : undefined],
     ["margin", optionalMargin(style.margin)]
@@ -237,6 +302,7 @@ function tabsStyle(node: DesignNode): string {
     ["align-items", "stretch"],
     ["gap", "0"],
     ["height", style.fill === true ? "100%" : undefined],
+    ["flex", style.fill === true || style.grow === true ? "1 1 0" : undefined],
     ["min-height", "0"],
     ["margin", optionalMargin(style.margin)]
   ]);
@@ -290,7 +356,7 @@ function sizeStyle(style: Record<string, unknown>): string {
 
 function rowJustifyContent(node: DesignNode): string | undefined {
   const style = node.style ?? {};
-  if (style.alignSelf === "right" || node.name === "ActionRow") {
+  if (style.alignSelf === "right" || style.alignSelf === "end" || node.name === "ActionRow") {
     return "flex-end";
   }
   if (style.alignSelf === "center") {
@@ -300,19 +366,39 @@ function rowJustifyContent(node: DesignNode): string | undefined {
 }
 
 function alignSelfCss(value: unknown): string | undefined {
-  if (value === "right") {
+  if (value === "right" || value === "end") {
     return "flex-end";
   }
   if (value === "center") {
     return "center";
   }
-  if (value === "left") {
+  if (value === "left" || value === "start") {
     return "flex-start";
   }
-  if (value === "fill") {
+  if (value === "fill" || value === "stretch") {
     return "stretch";
   }
   return undefined;
+}
+
+function positionedOffset(value: string, size: number | undefined, viewportSize: number): string | undefined {
+  if (value === "center" || value === "stretch" || value === "fill") {
+    return "50%";
+  }
+  if (value === "end" || value === "right" || value === "bottom") {
+    return size === undefined ? undefined : px(viewportSize - size);
+  }
+  return "0";
+}
+
+function needsCenterTransform(align: string, valign: string): boolean {
+  return align === "center" || valign === "center";
+}
+
+function centerTransform(align: string, valign: string): string {
+  const x = align === "center" ? "-50%" : "0";
+  const y = valign === "center" ? "-50%" : "0";
+  return `translate(${x}, ${y})`;
 }
 
 function isSettingRow(node: DesignNode): boolean {

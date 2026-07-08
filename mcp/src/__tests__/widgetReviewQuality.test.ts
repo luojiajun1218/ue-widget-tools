@@ -59,22 +59,60 @@ describe("widget review quality gate", () => {
       ])
     );
   });
+
+  it("rejects legacy review previews without scale-to-fit behavior", () => {
+    const legacyHtml = validPreviewHtml()
+      .replace(/--widget-preview-scale:[^}]+}/, "")
+      .replace("transform:scale(var(--widget-preview-scale));", "");
+
+    const result = validateWidgetReview({ html: legacyHtml });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "MISSING_PREVIEW_SCALE",
+          severity: "error"
+        })
+      ])
+    );
+  });
+
+  it("rejects tab pages that are not fill-sized and scrollable", () => {
+    const result = validateWidgetReview({
+      html: validPreviewHtml().replace(' style="height:100%;min-height:0;overflow:auto;"', "")
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TAB_PAGE_NOT_SCROLLABLE",
+          severity: "error"
+        })
+      ])
+    );
+  });
 });
 
 function validPreviewHtml(): string {
   return `<!doctype html>
 <html>
 <body>
-  <div class="widget-review-shell">
+  <main class="widget-review-shell">
     <div class="widget-viewport-frame" style="width:1280px;height:720px;">
       <div class="widget-screen" data-node="SettingsScreen" style="width:1280px;height:720px;">
         <button class="widget-tab-button active" data-node="VideoTabButton" data-widget-tab-button="video" aria-selected="true">Video</button>
         <button class="widget-tab-button" data-node="AudioTabButton" data-widget-tab-button="audio" aria-selected="false">Audio</button>
-        <div class="widget-tab-page" data-node="VideoSettingsPage" data-widget-tab-page="video">Video settings</div>
-        <div class="widget-tab-page" data-node="AudioSettingsPage" data-widget-tab-page="audio" hidden>Audio settings</div>
+        <div class="widget-tab-page" data-node="VideoSettingsPage" data-widget-tab-page="video" style="height:100%;min-height:0;overflow:auto;">Video settings</div>
+        <div class="widget-tab-page" data-node="AudioSettingsPage" data-widget-tab-page="audio" style="height:100%;min-height:0;overflow:auto;" hidden>Audio settings</div>
       </div>
     </div>
-  </div>
+  </main>
+  <style>
+    :root { --widget-preview-scale: min(1, calc((100vw - 36px) / 1280), calc((100vh - 78px) / 720)); }
+    .widget-viewport-frame { transform:scale(var(--widget-preview-scale)); }
+  </style>
   <script>
     (() => {
       const buttons = Array.from(document.querySelectorAll('[data-widget-tab-button]'));

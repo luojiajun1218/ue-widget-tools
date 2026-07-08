@@ -281,4 +281,23 @@ describe("widget TSX DSL compiler", () => {
       })
     );
   });
+
+  it("keeps Canvas without width and height as fullscreen fill-parent design", () => {
+    const result = compileWidgetDsl({
+      source: `
+        <Widget name="FullscreenSettings">
+          <Canvas name="SettingsScreen">
+            <Border name="SettingsRoot" fill backgroundColor="panel">
+              <Text name="TitleText" text="设置" variant="title" />
+            </Border>
+          </Canvas>
+        </Widget>
+      `
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.design.viewport).toBeUndefined();
+    expect(result.design.root.name).toBe("SettingsScreen");
+    expect(result.design.root.children?.[0]?.style?.fill).toBe(true);
+  });
 });

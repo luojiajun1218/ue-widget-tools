@@ -42,6 +42,14 @@ export function validateWidgetReview(input: WidgetReviewQualityInput): { ok: boo
     });
   }
 
+  if (!hasPreviewScaleContract(html)) {
+    issues.push({
+      code: "MISSING_PREVIEW_SCALE",
+      severity: "error",
+      message: "Preview HTML must include scale-to-fit CSS for direct browser review."
+    });
+  }
+
   for (const nodeName of input.requiredNodes ?? []) {
     if (!hasDataNode(html, nodeName)) {
       issues.push({
@@ -93,7 +101,10 @@ function hasViewportFrame(html: string, viewport: WidgetReviewQualityInput["view
       continue;
     }
 
-    if (/\bwidth\s*:\s*\d+px\b/i.test(style) && /\bheight\s*:\s*\d+px\b/i.test(style)) {
+    if (
+      (/\bwidth\s*:\s*\d+px\b/i.test(style) && /\bheight\s*:\s*\d+px\b/i.test(style)) ||
+      (hasCssDeclaration(style, "width", "calc(100vw - 36px)") && hasCssDeclaration(style, "height", "calc(100vh - 96px)"))
+    ) {
       return true;
     }
   }
@@ -133,6 +144,22 @@ function validateTabs(html: string, issues: WidgetReviewQualityIssue[]): void {
     return;
   }
 
+  for (const tag of tabPageTags) {
+    const style = attributeValue(tag, "style") ?? "";
+    if (
+      !hasCssDeclaration(style, "height", "100%") ||
+      !hasCssDeclaration(style, "min-height", "0") ||
+      !hasCssDeclaration(style, "overflow", "auto")
+    ) {
+      issues.push({
+        code: "TAB_PAGE_NOT_SCROLLABLE",
+        severity: "error",
+        message: "Preview HTML tab pages must be fill-sized and scrollable for dense settings review."
+      });
+      break;
+    }
+  }
+
   if (hasBooleanAttribute(tabPageTags[0] ?? "", "hidden")) {
     issues.push({
       code: "INVALID_TAB_PAGE_VISIBILITY",
@@ -151,6 +178,10 @@ function validateTabs(html: string, issues: WidgetReviewQualityIssue[]): void {
       return;
     }
   }
+}
+
+function hasPreviewScaleContract(html: string): boolean {
+  return /--widget-preview-scale\b/i.test(html) && /transform\s*:\s*scale\(\s*var\(\s*--widget-preview-scale\s*\)\s*\)/i.test(html);
 }
 
 function hasTabScript(html: string): boolean {

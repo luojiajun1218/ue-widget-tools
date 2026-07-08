@@ -9,12 +9,16 @@ The compiler should preserve UMG semantics first, then emit preview HTML from th
 Use a `.widget.tsx` file with simple JSX-like tags:
 
 ```tsx
-<Canvas name="SettingsScreen" width={1280} height={720}>
-  <Border name="SettingsFrame" backgroundColor="panel" padding={[28, 24, 28, 24]}>
+<Canvas name="SettingsScreen">
+  <Border name="SettingsRoot" fill backgroundColor="panel" padding={[28, 24, 28, 24]}>
     <Text name="TitleText" text="SETTINGS" variant="title" />
   </Border>
 </Canvas>
 ```
+
+Omit root `Canvas` width/height for normal full-screen widgets. A root child with `fill`
+maps to fill-parent anchors in UMG and renders as a browser full-screen review. Add
+numeric root dimensions only when intentionally reviewing a fixed-size widget.
 
 The planned parser subset is intentionally small:
 
@@ -63,4 +67,4 @@ Semantic fallback is allowed only when a component is not recognized:
 
 ## Settings Example
 
-See the Widget DSL review/apply examples in `../skills/ue-widget-developer/references/tool-workflow.md` for a complete settings-screen workflow. The examples mirror the existing `WBP_Setting` control structure with Video, Audio, Controls, and Gameplay tabs plus Reset, Apply, and Close buttons.
+See `fixtures/wbp-setting-fullscreen.widget.tsx` in the public tool repository for a compact fullscreen settings example. For production screens, first gather project UI context and then adapt the DSL to the target project's visual language.

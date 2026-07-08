@@ -12,7 +12,7 @@ import { dispatchTool, mcpTools } from "./tools.js";
 
 export function createServer(): Server {
   const server = new Server(
-    { name: "mistyplanet-ui-mcp-server", version: "0.1.0" },
+    { name: "ue-widget-mcp-server", version: "0.1.0" },
     { capabilities: { tools: {} } }
   );
 

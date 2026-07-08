@@ -7,15 +7,19 @@ describe("widget preview renderer", () => {
   it("renders tabs settings design with review shell, layout styles, hooks, and controls", () => {
     const html = renderWidgetPreview({ design: settingsPreviewDesign() });
 
-    expect(html).toContain('<div class="widget-review-shell">');
+    expect(html).toContain('<main class="widget-review-shell" data-preview-mode="fixed">');
     expect(html).toContain('<div class="widget-review-header" aria-label="Widget preview metadata">');
     expect(html).toContain('<span class="widget-review-source">SettingsPreview</span>');
     expect(html).toContain('<span class="widget-review-viewport">1280 x 720</span>');
     expect(html).toContain('<div class="widget-viewport-frame" style="width:1280px;height:720px;">');
     expect(html).toContain('<div class="widget-screen" data-node="SettingsScreen" style="width:1280px;height:720px;');
-    expect(html).toContain('data-node="SettingsFrame" style="background:#0F1A22EE;padding:28px 24px 28px 24px;width:1120px;height:640px;');
+    expect(html).toContain('data-node="SettingsFrame"');
+    expect(html).toContain('background:#0F1A22EE;');
+    expect(html).toContain('padding:28px 24px 28px 24px;');
+    expect(html).toContain('width:1120px;height:640px;');
     expect(html).toContain('data-widget-tab-button="video"');
-    expect(html).toContain('data-widget-tab-page="audio" hidden');
+    expect(html).toContain('data-widget-tab-page="audio"');
+    expect(html).toContain('hidden><div class="widget-row" data-node="MasterVolumeRow"');
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain("button.setAttribute('aria-selected', String(isActive))");
     expect(html).toContain("document.querySelectorAll('[data-widget-tab-button]')");
@@ -31,6 +35,51 @@ describe("widget preview renderer", () => {
     expect(html).toContain('data-node="ActionRow" style="display:flex;align-items:center;gap:20px;margin:18px 0 0 0;justify-content:flex-end;align-self:flex-end;"');
     expect(html).toContain('<button class="widget-button secondary" data-node="ResetButton"');
     expect(html).toContain('<button class="widget-button primary" data-node="ApplyButton"');
+  });
+
+  it("renders a usable fullscreen design review preview for layered settings screens", () => {
+    const html = renderWidgetPreview({ design: layeredSettingsPreviewDesign() });
+
+    expect(html).toContain('<main class="widget-review-shell" data-preview-mode="fixed">');
+    expect(html).toContain('Open this file directly in a browser');
+    expect(html).toContain('transform:scale(var(--widget-preview-scale));');
+    expect(html).toContain('data-node="DimBackground"');
+    expect(html).toContain('position:absolute;inset:0;z-index:0;');
+    expect(html).toContain('data-node="SettingsFrame"');
+    expect(html).toContain('z-index:1;');
+    expect(html).toContain('data-node="HeaderTextStack" style="display:flex;flex-direction:column;gap:4px;flex:1 1 0;min-width:0;');
+    expect(html).toContain('data-node="ActionRow" style="display:flex;align-items:center;gap:14px;');
+    expect(html).toContain('justify-content:flex-end;align-self:flex-end;');
+    expect(html).toContain('data-node="SettingsTabsSwitcher" style="flex:1 1 auto;min-width:0;padding:22px 0 0 0;height:100%;min-height:0;');
+    expect(html).toContain('class="widget-tab-page" data-node="AudioSettingsPage" data-widget-tab-page="audio" style="height:100%;min-height:0;overflow:auto;"');
+  });
+
+  it("renders designs without a viewport as browser fullscreen fill-parent previews", () => {
+    const html = renderWidgetPreview({
+      design: {
+        name: "FullscreenSettingsPreview",
+        root: {
+          type: "screen",
+          name: "SettingsScreen",
+          children: [
+            {
+              type: "panel",
+              name: "SettingsRoot",
+              style: { fill: true, backgroundColor: "panel" },
+              children: [{ type: "text", name: "TitleText", text: "设置", variant: "title" }]
+            }
+          ]
+        }
+      }
+    });
+
+    expect(html).toContain('data-preview-mode="fullscreen"');
+    expect(html).toContain('<span class="widget-review-viewport">fullscreen / fill-parent</span>');
+    expect(html).toContain('class="widget-viewport-frame" style="width:calc(100vw - 36px);height:calc(100vh - 96px);"');
+    expect(html).toContain('data-node="SettingsScreen" style="width:100%;height:100%;');
+    expect(html).toContain('data-node="SettingsRoot" style="position:absolute;inset:0;');
+    expect(html).not.toContain('1280 x 720');
+    expect(html).not.toContain('1920 x 1080');
   });
 });
 
@@ -170,6 +219,114 @@ function settingsPreviewDesign(): WidgetDesign {
                     { type: "button", name: "ResetButton", text: "Reset", variant: "secondary", style: { width: 116, height: 44 } },
                     { type: "button", name: "ApplyButton", text: "Apply", variant: "primary", style: { width: 116, height: 44 } },
                     { type: "button", name: "CloseSettingsButton", text: "Close", variant: "secondary", style: { width: 116, height: 44 } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+function layeredSettingsPreviewDesign(): WidgetDesign {
+  return {
+    name: "LayeredSettingsPreview",
+    viewport: { width: 1280, height: 720 },
+    theme: {
+      colors: {
+        background: "#081017EE",
+        panel: "#101D28F2",
+        primary: "#35D6C9",
+        secondary: "#2F4656",
+        text: "#EAF7F6",
+        muted: "#8FA9AD"
+      },
+      spacing: 12
+    },
+    root: {
+      type: "screen",
+      name: "SettingsScreen",
+      children: [
+        {
+          type: "panel",
+          name: "DimBackground",
+          style: { backgroundColor: "#03070ACC", width: 1280, height: 720 }
+        },
+        {
+          type: "panel",
+          name: "SettingsFrame",
+          style: {
+            backgroundColor: "panel",
+            padding: [28, 24, 28, 24],
+            width: 1120,
+            height: 640,
+            alignSelf: "center",
+            valignSelf: "center"
+          },
+          children: [
+            {
+              type: "stack",
+              name: "SettingsLayout",
+              gap: 18,
+              style: { fill: true },
+              children: [
+                {
+                  type: "stack",
+                  name: "HeaderTextStack",
+                  gap: 4,
+                  style: { grow: true },
+                  children: [
+                    { type: "text", name: "TitleText", text: "设置", variant: "title" },
+                    { type: "text", name: "SubtitleText", text: "调整音频、画面和控制", variant: "muted" }
+                  ]
+                },
+                {
+                  type: "tabs",
+                  name: "SettingsTabs",
+                  style: {
+                    fill: true,
+                    sidebarWidth: 190,
+                    buttonHeight: 54,
+                    sidebarGap: 10,
+                    contentPadding: [22, 0, 0, 0]
+                  },
+                  tabs: [
+                    {
+                      id: "audio",
+                      label: "音频",
+                      buttonName: "AudioTabButton",
+                      pageName: "AudioSettingsPage",
+                      children: [
+                        {
+                          type: "panel",
+                          name: "AudioPanel",
+                          style: { backgroundColor: "#0C1720DD", padding: [22, 20, 22, 20] },
+                          children: [
+                            {
+                              type: "row",
+                              name: "MasterVolumeRow",
+                              style: { labelWidth: 230, controlWidth: 430 },
+                              children: [
+                                { type: "text", name: "MasterVolumeLabel", text: "主音量" },
+                                { type: "slider", name: "MasterVolumeSlider", value: 0.8 }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  type: "row",
+                  name: "ActionRow",
+                  gap: 14,
+                  style: { alignSelf: "end" },
+                  children: [
+                    { type: "button", name: "ResetButton", text: "恢复默认", variant: "secondary" },
+                    { type: "button", name: "ApplyButton", text: "应用", variant: "primary" }
                   ]
                 }
               ]

@@ -9,6 +9,8 @@
         "name": "TitleText",
         "text": "WidgetBridge",
         "slot": {
+          "anchors": { "minimum": [0.0, 0.0], "maximum": [0.0, 0.0] },
+          "alignment": [0.0, 0.0],
           "position": [80, 64],
           "size": [520, 64],
           "zOrder": 1
@@ -19,7 +21,9 @@
         "name": "CloseButton",
         "isVariable": true,
         "slot": {
-          "position": [1720, 64],
+          "anchors": { "minimum": [1.0, 0.0], "maximum": [1.0, 0.0] },
+          "alignment": [1.0, 0.0],
+          "position": [-80, 64],
           "size": [120, 64],
           "zOrder": 2
         }

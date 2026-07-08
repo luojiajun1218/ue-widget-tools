@@ -119,7 +119,7 @@ export const applyWidgetDslSchema = z
     profile: z.enum(["settings", "hud", "menu", "generic"]).default("generic"),
     compile: z.boolean().default(true),
     save: z.boolean().default(true),
-    inspect: z.boolean().default(false),
+    inspect: z.boolean().default(true),
     transactionId: transactionIdSchema,
     bindings: z
       .object({

@@ -2,6 +2,12 @@
 
 Use the private MCP bridge tools in this order. Keep every asset path inside `/Game/MistyPlanet/UI/`.
 
+## Skill Routing
+
+This workflow is self-contained for MistyPlanet UMG widget work. Do not route MistyPlanet Widget Blueprint work through generic brainstorming/superpowers planning for requests to create, inspect, edit, validate, style, or wire Widget Blueprints. Use this document's Widget DSL review and generated HTML review as the design/review gate.
+
+Do not write a superpowers spec or implementation plan for routine widget creation. Create or update the review HTML before any Unreal asset mutation.
+
 ## Standard Sequence
 
 1. `ue.project.status`
@@ -9,13 +15,14 @@ Use the private MCP bridge tools in this order. Keep every asset path inside `/G
 3. For non-trivial widgets, call `ue.ui.generate_widget_cpp` to preview the C++ base class, then `ue.ui.write_widget_cpp` to write it under the generated UI C++ folders.
 4. Compile the project so the C++ class is available. Prefer `ue.project.rebuild_cpp_with_editor_restart` for normal UBT rebuilds because it closes UE, builds, and reopens UE automatically.
 5. Call `ue.ui.create_widget_blueprint` with `parentClass`, or `ue.ui.set_widget_parent_class` for an existing Widget Blueprint.
-6. For new non-trivial UI, draft Widget DSL. Treat the DSL as the source protocol; do not use HTML as source.
-7. Call `ue.ui.review_widget_dsl`. Use `profile: "settings"` for settings/menu settings panels. Fix all `diagnostics`, `lossReport`, `quality`, and `reviewQuality` errors before writing.
-8. Show or inspect the generated web review HTML before writing. If user approval is part of the task, wait for approval here.
-9. Prefer `ue.ui.apply_widget_dsl` with explicit bindings. It reviews, applies, binds, and finalizes in one guarded sequence.
-10. For hand-authored layout JSON only, call `ue.ui.validate_widget_layout`, then `ue.ui.apply_widget_layout`, bind events, and finalize.
-11. Visually inspect the result in Unreal. Do not report completion if the layout is cramped, unstyled, unreadable, or only default UMG controls.
-12. If generated C++ changed, call `ue.project.rebuild_cpp_with_editor_restart` unless you intentionally want to keep UE closed or use Live Coding.
+6. For new non-trivial UI, read `project-ui-context.md`, gather project UI evidence, and write the design-language brief. Then read `visual-design-rubric.md`, write the visual direction note, and reject the stale template before drafting DSL.
+7. Draft Widget DSL. Treat the DSL as the source protocol; do not use HTML as source.
+8. Call `ue.ui.review_widget_dsl`. Use `profile: "settings"` for settings/menu settings panels. Fix all `diagnostics`, `lossReport`, `quality`, and `reviewQuality` errors before writing.
+9. Show or inspect the generated web review HTML before writing. If user approval is part of the task, wait for approval here.
+10. Prefer `ue.ui.apply_widget_dsl` with explicit bindings. It reviews, applies, binds, and finalizes in one guarded sequence.
+11. For hand-authored layout JSON only, call `ue.ui.validate_widget_layout`, then `ue.ui.apply_widget_layout`, bind events, and finalize.
+12. Visually inspect the result in Unreal. Do not report completion if the layout is cramped, unstyled, unreadable, generic, or only default UMG controls.
+13. If generated C++ changed, call `ue.project.rebuild_cpp_with_editor_restart` unless you intentionally want to keep UE closed or use Live Coding.
 
 If any step reports warnings or diagnostics, stop and summarize them before making another mutation.
 
@@ -23,12 +30,12 @@ If any step reports warnings or diagnostics, stop and summarize them before maki
 
 Use this before mutating Unreal assets:
 
-The fullscreen placeholders below are documentation placeholders. Before calling tools, replace them with the current target fullscreen viewport and proportional panel dimensions.
+Use fill-parent fullscreen layout as the default design target. Do not put `width` or `height` on the root `Canvas` unless the widget is intentionally fixed-size.
 
 ```json
 {
   "profile": "settings",
-  "source": "<Widget name=\"Settings\"><Canvas name=\"SettingsScreen\" width={FullscreenWidth} height={FullscreenHeight}><Border name=\"SettingsFrame\" width={FullscreenPanelWidth} height={FullscreenPanelHeight} padding={[40,36,40,36]} backgroundColor=\"panel\"><VerticalBox name=\"SettingsLayout\" fill><Text name=\"TitleText\" text=\"SETTINGS\" variant=\"title\" /><SettingRow label=\"Brightness\" labelWidth={320} controlWidth={620}><Slider name=\"BrightnessSlider\" value={0.62} /></SettingRow></VerticalBox></Border></Canvas></Widget>"
+  "source": "<Widget name=\"Settings\"><Canvas name=\"SettingsScreen\"><Border name=\"SettingsRoot\" fill padding={[40,36,40,36]} backgroundColor=\"panel\"><VerticalBox name=\"SettingsLayout\" fill><Text name=\"TitleText\" text=\"SETTINGS\" variant=\"title\" /><SettingRow label=\"Brightness\" labelWidth={320} controlFill={true}><Slider name=\"BrightnessSlider\" value={0.62} /></SettingRow></VerticalBox></Border></Canvas></Widget>"
 }
 ```
 
@@ -39,19 +46,19 @@ A usable review result has:
 - `quality.ok: true`
 - `reviewQuality.ok: true`
 
-The generated HTML is for review only. The generated layout is the UMG write payload.
+The generated HTML is for review only. The generated layout is the UMG write payload. Passing structural quality is not enough: reject the design if it does not cite project UI references and follow the design-language brief from `project-ui-context.md`, or if it matches the anti-templates in `visual-design-rubric.md`.
 
 ## Apply Widget DSL Example
 
 Use this after review passes and the user has accepted the visual direction:
 
-Replace fullscreen placeholders with concrete values before calling the tool.
+Use the reviewed fill-parent DSL after the visual direction is accepted.
 
 ```json
 {
   "assetPath": "/Game/MistyPlanet/UI/WBP_Setting",
   "profile": "settings",
-  "source": "<Widget name=\"Settings\"><Canvas name=\"SettingsScreen\" width={FullscreenWidth} height={FullscreenHeight}><Border name=\"SettingsFrame\" width={FullscreenPanelWidth} height={FullscreenPanelHeight} padding={[40,36,40,36]} backgroundColor=\"panel\"><VerticalBox name=\"SettingsLayout\" fill><SettingRow label=\"Brightness\" labelWidth={320} controlWidth={620}><Slider name=\"BrightnessSlider\" value={0.62} /></SettingRow><HorizontalBox name=\"ActionRow\" alignSelf=\"right\"><Button name=\"ApplyButton\" text=\"Apply\" variant=\"primary\" /></HorizontalBox></VerticalBox></Border></Canvas></Widget>",
+  "source": "<Widget name=\"Settings\"><Canvas name=\"SettingsScreen\"><Border name=\"SettingsRoot\" fill padding={[40,36,40,36]} backgroundColor=\"panel\"><VerticalBox name=\"SettingsLayout\" fill><SettingRow label=\"Brightness\" labelWidth={320} controlFill={true}><Slider name=\"BrightnessSlider\" value={0.62} /></SettingRow><HorizontalBox name=\"ActionRow\" alignSelf=\"right\"><Button name=\"ApplyButton\" text=\"Apply\" variant=\"primary\" /></HorizontalBox></VerticalBox></Border></Canvas></Widget>",
   "bindings": {
     "buttons": [
       { "widget": "ApplyButton", "function": "ApplySettings" }
@@ -75,7 +82,6 @@ Before applying a non-trivial layout, validate it:
 ```json
 {
   "profile": "settings",
-  "viewport": { "width": "<current fullscreen width>", "height": "<current fullscreen height>" },
   "layout": {
     "root": {
       "type": "CanvasPanel",
@@ -87,12 +93,12 @@ Before applying a non-trivial layout, validate it:
 
 The validator rejects settings screens that cram many controls into one unpaged column, omit scroll/page structure, omit styled containers, or rely on default top-left Canvas placement. A settings UI should normally use:
 
-- A centered or responsive shell with `Border`/`Overlay` styling.
+- A fullscreen fill-parent shell with `Border`/`Overlay` styling.
 - Left tabs or a `WidgetSwitcher` for categories.
 - `ScrollBox` for dense setting rows.
 - Styled buttons and backgrounds, not default gray UMG controls.
 - A clear action row for Apply/Reset/Close.
-- Layout sized for the game's default fullscreen viewport first, then scalable across other fullscreen resolutions.
+- Layout that fills the parent and remains usable across fullscreen resolutions.
 
 ## C++ Base Class Example
 
@@ -103,12 +109,16 @@ Use the pure generator first when reviewing output:
   "className": "UWBP_SettingBase",
   "category": "Settings",
   "functions": [
-    { "name": "HandleVolumeChanged" },
+    { "name": "HandleMasterVolumeChanged" },
+    { "name": "HandleMusicVolumeChanged" },
+    { "name": "HandleSfxVolumeChanged" },
     { "name": "HandleFullscreenChanged" },
     { "name": "HandleResolutionChanged" }
   ],
   "bindings": [
-    { "type": "USlider", "name": "VolumeSlider" },
+    { "type": "USlider", "name": "MasterVolumeSlider" },
+    { "type": "USlider", "name": "MusicVolumeSlider" },
+    { "type": "USlider", "name": "SfxVolumeSlider" },
     { "type": "UCheckBox", "name": "FullscreenCheckBox" },
     { "type": "UComboBoxString", "name": "ResolutionComboBox" }
   ]
@@ -213,8 +223,8 @@ Slider handlers must accept the delegate value payload, typically one `float`.
 ```json
 {
   "assetPath": "/Game/MistyPlanet/UI/WBP_Setting",
-  "sliderName": "VolumeSlider",
-  "functionName": "HandleVolumeChanged"
+  "sliderName": "MasterVolumeSlider",
+  "functionName": "HandleMasterVolumeChanged"
 }
 ```
 

@@ -200,9 +200,42 @@ describe("MCP tool dispatch", () => {
       const payload = JSON.parse(content.text);
       expect(payload.layout.root.name).toBe("MenuScreen");
       expect(payload.html).toContain("StartButton");
+      expect(payload.html).toContain('<main class="widget-review-shell" data-preview-mode="fixed">');
+      expect(payload.html).toContain("widget-viewport-frame");
+      expect(payload.html).toContain("--widget-preview-scale");
+      expect(payload.html).not.toContain('<main class="screen"');
       expect(payload.quality.ok).toBe(true);
       expect(payload.reviewQuality.ok).toBe(true);
       expect(payload.diagnostics).toEqual([]);
+    }
+  });
+
+  it("reviews fullscreen widget DSL without injecting a fixed design viewport", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.review_widget_dsl",
+      {
+        profile: "settings",
+        source: '<Widget name="FullscreenSettings"><Canvas name="SettingsScreen"><Border name="SettingsRoot" fill backgroundColor="panel"><Text name="TitleText" text="设置" variant="title" /></Border></Canvas></Widget>'
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).not.toHaveBeenCalled();
+    const [content] = result.content;
+    expect(content.type).toBe("text");
+    if (content.type === "text") {
+      const payload = JSON.parse(content.text);
+      expect(payload.design.viewport).toBeUndefined();
+      expect(payload.html).toContain('data-preview-mode="fullscreen"');
+      expect(payload.html).toContain("fullscreen / fill-parent");
+      expect(payload.quality.ok).toBe(true);
+      expect(payload.reviewQuality.ok).toBe(true);
     }
   });
 
@@ -252,7 +285,7 @@ describe("MCP tool dispatch", () => {
         assetPath: "/Game/MistyPlanet/UI/WBP_Menu",
         compile: true,
         save: true,
-        inspect: false
+        inspect: true
       }
     });
   });

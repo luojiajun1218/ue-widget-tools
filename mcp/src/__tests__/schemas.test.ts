@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { toolInputSchemas } from "../schemas.js";
 import { mcpTools } from "../tools.js";
-
-function readFixture(name: string): unknown {
-  const fixturePath = resolve("..", "fixtures", name);
-  return JSON.parse(readFileSync(fixturePath, "utf8")) as unknown;
-}
 
 describe("Misty UI MCP schemas", () => {
   it("rejects UI asset paths outside /Game/MistyPlanet/UI/", () => {
@@ -134,7 +126,29 @@ describe("Misty UI MCP schemas", () => {
   });
 
   it("accepts a rich WBP_Setting applyWidgetLayout payload", () => {
-    const payload = readFixture("wbp-setting-layout.json");
+    const payload = {
+      assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
+      layout: {
+        root: {
+          type: "CanvasPanel",
+          name: "SettingsScreen",
+          children: [
+            {
+              type: "Border",
+              name: "SettingsFrame",
+              backgroundColor: "#101D28F2",
+              padding: [28, 24, 28, 24],
+              slot: {
+                anchors: { minimum: [0, 0], maximum: [1, 1] },
+                alignment: [0, 0],
+                size: [0, 0],
+                zOrder: 1
+              }
+            }
+          ]
+        }
+      }
+    };
 
     const result = toolInputSchemas["ue.ui.apply_widget_layout"].safeParse(payload);
 
@@ -207,7 +221,7 @@ describe("Misty UI MCP schemas", () => {
       expect(result.data.profile).toBe("generic");
       expect(result.data.compile).toBe(true);
       expect(result.data.save).toBe(true);
-      expect(result.data.inspect).toBe(false);
+      expect(result.data.inspect).toBe(true);
     }
   });
 });

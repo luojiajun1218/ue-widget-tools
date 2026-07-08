@@ -1,3 +1,5 @@
+import { renderWidgetPreview } from "./widgetPreview.js";
+
 export interface CompileWidgetDesignInput {
   design: WidgetDesign;
 }
@@ -73,7 +75,7 @@ export function compileWidgetDesign(input: CompileWidgetDesignInput): CompileWid
     layout: {
       root: compileNode(input.design.root, theme, lossReport, true)
     },
-    html: renderHtml(input.design, theme, lossReport),
+    html: renderWidgetPreview({ design: input.design }),
     lossReport
   };
 }
@@ -704,6 +706,17 @@ function numberOr(value: unknown, fallback: number): number {
 }
 
 function rootSlot(style: Record<string, unknown>, viewport: { width: number; height: number }): Record<string, unknown> {
+  if (style.fill === true) {
+    return {
+      slot: {
+        anchors: { minimum: [0, 0], maximum: [1, 1] },
+        alignment: [0, 0],
+        size: [0, 0],
+        zOrder: 1
+      }
+    };
+  }
+
   const width = numberOr(style.width, Math.min(1040, Math.max(320, viewport.width - 160)));
   const height = numberOr(style.height, Math.min(620, Math.max(240, viewport.height - 100)));
   return {
