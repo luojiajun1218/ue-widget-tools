@@ -2,7 +2,13 @@
 
 Widget TSX is the source protocol for local UI MCP designs. The DSL should describe the intended Unreal UMG widget tree directly. HTML is preview output only and must not be treated as the canonical design source.
 
-The compiler should preserve UMG semantics first, then emit preview HTML from the same source so authors can inspect layout quickly in a browser.
+The compiler should preserve UMG semantics first, then emit a browser Review Console from the same source. The DSL remains canonical; the Review Console is a controlled inspection surface, not a second widget editor.
+
+## Review Console
+
+The generated HTML supports normal control interaction such as tabs, sliders, toggles, and selects. To inspect a specific widget without triggering it, Alt-click it. The console shows and can copy its stable Widget name, then the user can ask AI for a focused change such as "make `ApplyButton` wider and add a Hover glow". AI changes the DSL, reruns review, and only applies to Unreal after approval.
+
+The console can simulate `Normal`, `Hover`, `Pressed`, and `Disabled` visual states for the selected widget. These are review-only state simulations; they do not alter DSL or Unreal assets.
 
 ## File Shape
 

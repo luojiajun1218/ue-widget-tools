@@ -81,6 +81,21 @@ describe("widget preview renderer", () => {
     expect(html).not.toContain('1280 x 720');
     expect(html).not.toContain('1920 x 1080');
   });
+
+  it("renders a review console that selects widgets and simulates control states without editing the DSL", () => {
+    const html = renderWidgetPreview({ design: settingsPreviewDesign() });
+
+    expect(html).toContain('<aside class="widget-review-console" aria-label="Widget review controls">');
+    expect(html).toContain('data-review-selection>Nothing selected</output>');
+    expect(html).toContain('data-review-state-button="normal"');
+    expect(html).toContain('data-review-state-button="hover"');
+    expect(html).toContain('data-review-state-button="pressed"');
+    expect(html).toContain('data-review-state-button="disabled"');
+    expect(html).toContain("document.querySelectorAll('[data-node]')");
+    expect(html).toContain("document.documentElement.dataset.reviewState = state");
+    expect(html).toContain("navigator.clipboard.writeText(selectedNode)");
+    expect(html).toContain("node.classList.toggle('widget-review-selected', isSelected)");
+  });
 });
 
 function settingsPreviewDesign(): WidgetDesign {

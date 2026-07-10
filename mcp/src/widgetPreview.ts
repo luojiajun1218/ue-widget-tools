@@ -66,9 +66,18 @@ export function renderWidgetPreview(input: RenderWidgetPreviewInput): string {
     .widget-toggle input:checked + .widget-toggle-track { background: ${theme.colors.primary}; }
     .widget-toggle input:checked + .widget-toggle-track .widget-toggle-thumb { transform: translateX(18px); }
     .widget-select { width: 100%; min-height: 36px; background: #101820; color: ${theme.colors.text}; border: 1px solid rgba(255,255,255,.16); padding: 6px 10px; }
+    .widget-review-console { width: ${preview.headerWidthCss}; max-width: calc(100vw - 36px); display: flex; align-items: center; gap: 8px; color: ${theme.colors.muted}; font-size: 12px; }
+    .widget-review-console-label { color: ${theme.colors.text}; font-weight: 700; }
+    .widget-review-console output { min-width: 128px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .widget-review-console button { min-height: 28px; padding: 4px 8px; background: rgba(255,255,255,.08); color: ${theme.colors.text}; border: 1px solid rgba(255,255,255,.14); }
+    .widget-review-console button[aria-pressed="true"] { background: ${theme.colors.primary}; color: #FFFFFF; }
+    .widget-review-selected { outline: 2px solid ${theme.colors.primary}; outline-offset: 2px; }
+    [data-review-state="hover"] .widget-review-selected { filter: brightness(1.12); box-shadow: 0 0 0 3px rgba(255,255,255,.12); }
+    [data-review-state="pressed"] .widget-review-selected { transform: scale(.98); filter: brightness(.86); }
+    [data-review-state="disabled"] .widget-review-selected { opacity: .45; filter: grayscale(1); pointer-events: none; }
   </style>
 </head>
-<body><main class="widget-review-shell" data-preview-mode="${preview.mode}"><div class="widget-review-header" aria-label="Widget preview metadata"><span class="widget-review-source">${escapeHtml(input.design.name)}</span><span class="widget-review-viewport">${escapeHtml(preview.label)}</span></div><div class="widget-review-help">Open this file directly in a browser. Fullscreen Widget DSL uses fill-parent semantics; numeric frame sizes are preview-only when present.</div><div class="widget-viewport-frame" style="${styleText([
+<body><main class="widget-review-shell" data-preview-mode="${preview.mode}"><div class="widget-review-header" aria-label="Widget preview metadata"><span class="widget-review-source">${escapeHtml(input.design.name)}</span><span class="widget-review-viewport">${escapeHtml(preview.label)}</span></div><div class="widget-review-help">Open this file directly in a browser. Alt-click a control to select it for review. Fullscreen Widget DSL uses fill-parent semantics; numeric frame sizes are preview-only when present.</div><aside class="widget-review-console" aria-label="Widget review controls"><span class="widget-review-console-label">Selected</span><output data-review-selection>Nothing selected</output><button type="button" data-review-copy disabled>Copy name</button><button type="button" data-review-state-button="normal" aria-pressed="true">Normal</button><button type="button" data-review-state-button="hover" aria-pressed="false">Hover</button><button type="button" data-review-state-button="pressed" aria-pressed="false">Pressed</button><button type="button" data-review-state-button="disabled" aria-pressed="false">Disabled</button></aside><div class="widget-viewport-frame" style="${styleText([
     ["width", preview.frameWidthCss],
     ["height", preview.frameHeightCss]
   ])}">${renderNode(input.design.root, theme, { isRootChild: true })}</div></main>
@@ -76,6 +85,43 @@ export function renderWidgetPreview(input: RenderWidgetPreviewInput): string {
     (() => {
       const buttons = Array.from(document.querySelectorAll('[data-widget-tab-button]'));
       const pages = Array.from(document.querySelectorAll('[data-widget-tab-page]'));
+      const reviewNodes = Array.from(document.querySelectorAll('[data-node]'));
+      const selectionOutput = document.querySelector('[data-review-selection]');
+      const copyButton = document.querySelector('[data-review-copy]');
+      const stateButtons = Array.from(document.querySelectorAll('[data-review-state-button]'));
+      let selectedNode = '';
+
+      function selectNode(element) {
+        selectedNode = element.dataset.node ?? '';
+        reviewNodes.forEach((node) => {
+          const isSelected = node === element;
+          node.classList.toggle('widget-review-selected', isSelected);
+        });
+        if (selectionOutput) selectionOutput.textContent = selectedNode || 'Nothing selected';
+        if (copyButton) copyButton.disabled = !selectedNode;
+      }
+
+      reviewNodes.forEach((element) => {
+        element.addEventListener('click', (event) => {
+          if (!event.altKey) return;
+          event.preventDefault();
+          event.stopPropagation();
+          selectNode(element);
+        });
+      });
+
+      copyButton?.addEventListener('click', () => {
+        if (selectedNode) navigator.clipboard.writeText(selectedNode);
+      });
+
+      stateButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const state = button.dataset.reviewStateButton ?? 'normal';
+          document.documentElement.dataset.reviewState = state;
+          stateButtons.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)));
+        });
+      });
+
       buttons.forEach((clickedButton) => {
         clickedButton.addEventListener('click', () => {
           const tabId = clickedButton.dataset.widgetTabButton;

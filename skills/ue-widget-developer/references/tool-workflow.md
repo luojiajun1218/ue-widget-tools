@@ -18,7 +18,7 @@ Do not write a superpowers spec or implementation plan for routine widget creati
 6. For new non-trivial UI, read `project-ui-context.md`, gather project UI evidence, and write the design-language brief. Then read `visual-design-rubric.md`, write the visual direction note, and reject the stale template before drafting DSL.
 7. Draft Widget DSL. Treat the DSL as the source protocol; do not use HTML as source.
 8. Call `ue.ui.review_widget_dsl`. Use `profile: "settings"` for settings/menu settings panels. Fix all `diagnostics`, `lossReport`, `quality`, and `reviewQuality` errors before writing.
-9. Show or inspect the generated web review HTML before writing. If user approval is part of the task, wait for approval here.
+9. Show or inspect the generated web Review Console before writing. Normal control interactions remain usable. Alt-click a widget to select it without triggering it, copy its Widget name, and request a focused AI revision against that stable name. Use the state buttons to review Normal, Hover, Pressed, and Disabled visuals. If user approval is part of the task, wait for approval here.
 10. Prefer `ue.ui.apply_widget_dsl` with explicit bindings. It reviews, applies, binds, and finalizes in one guarded sequence.
 11. For hand-authored layout JSON only, call `ue.ui.validate_widget_layout`, then `ue.ui.apply_widget_layout`, bind events, and finalize.
 12. Visually inspect the result in Unreal. Do not report completion if the layout is cramped, unstyled, unreadable, generic, or only default UMG controls.
@@ -46,7 +46,7 @@ A usable review result has:
 - `quality.ok: true`
 - `reviewQuality.ok: true`
 
-The generated HTML is for review only. The generated layout is the UMG write payload. Passing structural quality is not enough: reject the design if it does not cite project UI references and follow the design-language brief from `project-ui-context.md`, or if it matches the anti-templates in `visual-design-rubric.md`.
+The generated Review Console is for review only. It may select a Widget name and simulate visual states, but it never edits the DSL directly. The generated layout is the UMG write payload. Passing structural quality is not enough: reject the design if it does not cite project UI references and follow the design-language brief from `project-ui-context.md`, or if it matches the anti-templates in `visual-design-rubric.md`.
 
 ## Apply Widget DSL Example
 
