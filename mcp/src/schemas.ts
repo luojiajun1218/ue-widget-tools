@@ -92,30 +92,33 @@ export const compileWidgetDesignSchema = z
   })
   .strict();
 
-export const compileWidgetDslSchema = z
+export const compileFigmaWidgetSchema = z
   .object({
-    source: z.string().min(1)
+    node: z.record(z.unknown()),
+    name: z.string().min(1).optional()
   })
   .strict();
 
-export const reviewWidgetDslSchema = z
+export const reviewFigmaWidgetSchema = z
   .object({
-    source: z.string().min(1),
+    node: z.record(z.unknown()),
+    name: z.string().min(1).optional(),
     profile: z.enum(["settings", "hud", "menu", "generic"]).default("generic")
   })
   .strict();
 
-const widgetDslBindingSchema = z
+const widgetBindingSchema = z
   .object({
     widget: z.string().min(1),
     function: z.string().min(1)
   })
   .strict();
 
-export const applyWidgetDslSchema = z
+export const applyFigmaWidgetSchema = z
   .object({
     assetPath: uiAssetPathSchema,
-    source: z.string().min(1),
+    node: z.record(z.unknown()),
+    name: z.string().min(1).optional(),
     profile: z.enum(["settings", "hud", "menu", "generic"]).default("generic"),
     compile: z.boolean().default(true),
     save: z.boolean().default(true),
@@ -123,10 +126,10 @@ export const applyWidgetDslSchema = z
     transactionId: transactionIdSchema,
     bindings: z
       .object({
-        buttons: z.array(widgetDslBindingSchema).default([]),
-        sliders: z.array(widgetDslBindingSchema).default([]),
-        checkboxes: z.array(widgetDslBindingSchema).default([]),
-        comboboxes: z.array(widgetDslBindingSchema).default([])
+        buttons: z.array(widgetBindingSchema).default([]),
+        sliders: z.array(widgetBindingSchema).default([]),
+        checkboxes: z.array(widgetBindingSchema).default([]),
+        comboboxes: z.array(widgetBindingSchema).default([])
       })
       .strict()
       .default({})
@@ -271,9 +274,9 @@ export type OpenEditorInput = z.input<typeof openEditorSchema>;
 export type RebuildCppWithEditorRestartInput = z.input<typeof rebuildCppWithEditorRestartSchema>;
 export type ValidateWidgetLayoutInput = z.input<typeof validateWidgetLayoutSchema>;
 export type CompileWidgetDesignInput = z.input<typeof compileWidgetDesignSchema>;
-export type CompileWidgetDslInput = z.input<typeof compileWidgetDslSchema>;
-export type ReviewWidgetDslInput = z.input<typeof reviewWidgetDslSchema>;
-export type ApplyWidgetDslInput = z.output<typeof applyWidgetDslSchema>;
+export type CompileFigmaWidgetInput = z.input<typeof compileFigmaWidgetSchema>;
+export type ReviewFigmaWidgetInput = z.input<typeof reviewFigmaWidgetSchema>;
+export type ApplyFigmaWidgetInput = z.output<typeof applyFigmaWidgetSchema>;
 
 export const toolInputSchemas = {
   "ue.project.status": projectStatusSchema,
@@ -283,9 +286,9 @@ export const toolInputSchemas = {
   "ue.ui.apply_widget_layout": applyWidgetLayoutSchema,
   "ue.ui.validate_widget_layout": validateWidgetLayoutSchema,
   "ue.ui.compile_widget_design": compileWidgetDesignSchema,
-  "ue.ui.compile_widget_dsl": compileWidgetDslSchema,
-  "ue.ui.review_widget_dsl": reviewWidgetDslSchema,
-  "ue.ui.apply_widget_dsl": applyWidgetDslSchema,
+  "ue.ui.compile_figma_widget": compileFigmaWidgetSchema,
+  "ue.ui.review_figma_widget": reviewFigmaWidgetSchema,
+  "ue.ui.apply_figma_widget": applyFigmaWidgetSchema,
   "ue.ui.bind_button_clicked_to_function": bindButtonClickedToFunctionSchema,
   "ue.ui.bind_slider_value_changed_to_function": bindSliderValueChangedToFunctionSchema,
   "ue.ui.bind_checkbox_changed_to_function": bindCheckboxChangedToFunctionSchema,

@@ -4,16 +4,16 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("ue-widget-developer skill documentation", () => {
-  it("keeps Widget DSL web review as the design gate and forbids generic brainstorming detours", () => {
+  it("keeps Figma review as the design gate and forbids generic brainstorming detours", () => {
     const skillRoot = resolveSkillRoot();
     const skill = readFileSync(resolve(skillRoot, "SKILL.md"), "utf8");
     const workflow = readFileSync(resolve(skillRoot, "references/tool-workflow.md"), "utf8");
     const combined = `${skill}\n${workflow}`;
 
-    expect(combined).toContain("Widget DSL web review is the design gate");
+    expect(combined).toContain("Figma node review is the design gate");
     expect(combined).toContain("Do not route MistyPlanet Widget Blueprint work through generic brainstorming");
     expect(combined).toContain("Do not write a superpowers spec or implementation plan for routine widget creation");
-    expect(combined).toContain("Create or update the review HTML before any Unreal asset mutation");
+    expect(combined).toContain("Use Figma frames and semantic layer names as the source protocol");
   });
 
   it("requires a visual originality gate so widget drafts do not reuse stale templates", () => {

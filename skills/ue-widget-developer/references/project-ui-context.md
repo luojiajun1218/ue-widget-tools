@@ -1,6 +1,6 @@
 # Project UI Context
 
-Use this before designing or redesigning UI in any project. The point is to infer the project's existing UI language before inventing a new screen. A design that does not cite project UI evidence is not ready for DSL.
+Use this before designing or redesigning UI in any project. The point is to infer the project's existing UI language before inventing a new screen. A design that does not cite project UI evidence is not ready for Figma generation.
 
 ## Universal Search Order
 
@@ -24,7 +24,7 @@ Use this before designing or redesigning UI in any project. The point is to infe
 
 ## Evidence Note
 
-Before DSL, write a concise note:
+Before generating Figma, write a concise note:
 
 - `project_sources`: UI docs, widget assets, component assets, art folders, screenshots, or source files inspected.
 - `style_guide_status`: found written guide, inferred from assets, or insufficient evidence.

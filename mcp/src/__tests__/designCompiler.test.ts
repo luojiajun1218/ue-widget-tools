@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { compileWidgetDesign } from "../designCompiler.js";
 
 describe("widget design compiler prototype", () => {
-  it("compiles structured design IR into UMG layout, HTML preview, and loss report", () => {
+  it("compiles structured design IR into UMG layout and loss report", () => {
     const result = compileWidgetDesign({
       design: {
         name: "SettingsPrototype",
@@ -89,8 +89,6 @@ describe("widget design compiler prototype", () => {
         })
       ])
     );
-    expect(result.html).toContain("SettingsPrototype");
-    expect(result.html).toContain("VolumeSlider");
     expect(result.lossReport).toEqual([]);
   });
 
@@ -153,7 +151,6 @@ describe("widget design compiler prototype", () => {
         })
       ])
     );
-    expect(result.html).toContain("overflow:auto");
   });
 
   it("maps tabs to tab buttons plus WidgetSwitcher pages", () => {
@@ -213,8 +210,6 @@ describe("widget design compiler prototype", () => {
         })
       ])
     );
-    expect(result.html).toContain('data-widget-tab-button="video"');
-    expect(result.html).toContain('data-widget-tab-page="audio"');
   });
 
   it("adds production slot sizing for settings shell and rows", () => {
@@ -444,10 +439,10 @@ describe("widget design compiler prototype", () => {
     );
   });
 
-  it("compiles DSL-like Settings IR into deterministic UMG layout without unsupported losses", () => {
+  it("compiles Settings IR into deterministic UMG layout without unsupported losses", () => {
     const result = compileWidgetDesign({
       design: {
-        name: "SettingsDslPrototype",
+        name: "SettingsPrototype",
         viewport: { width: 1440, height: 900 },
         theme: {
           colors: {

@@ -5,24 +5,22 @@ import { BridgeClient } from "./bridgeClient.js";
 import { generateWidgetCpp } from "./cppGenerator.js";
 import { writeWidgetCpp } from "./cppWriter.js";
 import { compileWidgetDesign, type CompileWidgetDesignInput as DesignCompilerInput } from "./designCompiler.js";
-import { compileWidgetDsl } from "./widgetDsl.js";
-import { renderWidgetPreview } from "./widgetPreview.js";
+import { compileFigmaWidget } from "./figmaImporter.js";
 import { buildProjectCpp } from "./projectBuilder.js";
 import { closeEditor, openEditor, rebuildCppWithEditorRestart } from "./ueLifecycle.js";
 import { validateWidgetLayoutQuality } from "./layoutQuality.js";
-import { validateWidgetReview } from "./widgetReviewQuality.js";
 import {
   bridgeCommandNames,
   isToolName,
   parseToolInput,
   type BuildCppInput,
-  type ApplyWidgetDslInput,
+  type ApplyFigmaWidgetInput,
   type CloseEditorInput,
-  type CompileWidgetDslInput,
+  type CompileFigmaWidgetInput,
   type GenerateWidgetCppInput,
   type OpenEditorInput,
   type RebuildCppWithEditorRestartInput,
-  type ReviewWidgetDslInput,
+  type ReviewFigmaWidgetInput,
   type ValidateWidgetLayoutInput,
   type WriteWidgetCppInput,
   type ToolName
@@ -151,7 +149,7 @@ export const mcpTools: Tool[] = [
   {
     name: "ue.ui.compile_widget_design",
     description:
-      "Compile structured Widget Design IR into UMG layout spec, HTML preview, and loss report without modifying Unreal assets.",
+      "Compile structured Widget Design IR into UMG layout spec and loss report without modifying Unreal assets.",
     inputSchema: objectSchema(
       {
         design: { type: "object", additionalProperties: true }
@@ -161,51 +159,45 @@ export const mcpTools: Tool[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   {
-    name: "ue.ui.compile_widget_dsl",
+    name: "ue.ui.compile_figma_widget",
     description:
-      "Compile UMG-like Widget TSX/DSL source into Widget Design IR, UMG layout spec, HTML preview, and diagnostics without modifying Unreal assets.",
+      "Compile a Figma frame/node JSON tree into Widget Design IR, UMG layout spec, and diagnostics without modifying Unreal assets.",
     inputSchema: objectSchema(
       {
-        source: {
-          type: "string",
-          description: "UMG-like Widget DSL source, using components such as Canvas, Border, Tabs, Tab, SettingRow, Slider, Toggle, and Select."
-        }
+        node: { type: "object", additionalProperties: true },
+        name: { type: "string" }
       },
-      ["source"]
+      ["node"]
     ),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   {
-    name: "ue.ui.review_widget_dsl",
+    name: "ue.ui.review_figma_widget",
     description:
-      "Compile UMG-like Widget TSX/DSL source and return design IR, UMG layout, web review HTML, diagnostics, loss report, and layout quality without modifying Unreal assets.",
+      "Compile a Figma frame/node JSON tree and return design IR, UMG layout, diagnostics, loss report, and layout quality without modifying Unreal assets.",
     inputSchema: objectSchema(
       {
-        source: {
-          type: "string",
-          description: "UMG-like Widget DSL source to review."
-        },
+        node: { type: "object", additionalProperties: true },
+        name: { type: "string" },
         profile: {
           type: "string",
           enum: ["settings", "hud", "menu", "generic"],
           description: "Layout quality profile to validate against."
         }
       },
-      ["source"]
+      ["node"]
     ),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   },
   {
-    name: "ue.ui.apply_widget_dsl",
+    name: "ue.ui.apply_figma_widget",
     description:
-      "Compile, review, apply, bind events, and finalize a Widget Blueprint from UMG-like Widget TSX/DSL source.",
+      "Compile, review, apply, bind events, and finalize a Widget Blueprint from a Figma frame/node JSON tree.",
     inputSchema: objectSchema(
       {
         assetPath: assetPathProperty,
-        source: {
-          type: "string",
-          description: "UMG-like Widget DSL source to compile and apply."
-        },
+        node: { type: "object", additionalProperties: true },
+        name: { type: "string" },
         profile: {
           type: "string",
           enum: ["settings", "hud", "menu", "generic"],
@@ -258,7 +250,7 @@ export const mcpTools: Tool[] = [
           additionalProperties: false
         }
       },
-      ["assetPath", "source"]
+      ["assetPath", "node"]
     ),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
   },
@@ -510,12 +502,12 @@ export async function dispatchTool(
             ? validateWidgetLayoutQuality(input as ValidateWidgetLayoutInput)
             : name === "ue.ui.compile_widget_design"
               ? compileWidgetDesign(input as unknown as DesignCompilerInput)
-            : name === "ue.ui.compile_widget_dsl"
-              ? compileWidgetDslAndDesign(input as CompileWidgetDslInput)
-            : name === "ue.ui.review_widget_dsl"
-              ? reviewWidgetDsl(input as ReviewWidgetDslInput)
-              : name === "ue.ui.apply_widget_dsl"
-                ? await applyWidgetDsl(input as ApplyWidgetDslInput, client)
+            : name === "ue.ui.compile_figma_widget"
+              ? compileFigmaWidgetAndDesign(input as CompileFigmaWidgetInput)
+            : name === "ue.ui.review_figma_widget"
+              ? reviewFigmaWidget(input as ReviewFigmaWidgetInput)
+              : name === "ue.ui.apply_figma_widget"
+                ? await applyFigmaWidget(input as ApplyFigmaWidgetInput, client)
           : name === "ue.ui.write_widget_cpp"
             ? writeWidgetCpp(input as WriteWidgetCppInput)
           : name === "ue.project.build_cpp"
@@ -534,25 +526,23 @@ export async function dispatchTool(
   }
 }
 
-function compileWidgetDslAndDesign(input: CompileWidgetDslInput): unknown {
-  const dslResult = compileWidgetDsl(input);
-  const compiled = compileWidgetDesign({ design: dslResult.design });
+function compileFigmaWidgetAndDesign(input: CompileFigmaWidgetInput): unknown {
+  const figmaResult = compileFigmaWidget(input);
+  const compiled = compileWidgetDesign({ design: figmaResult.design });
 
   return {
-    design: dslResult.design,
+    design: figmaResult.design,
     layout: compiled.layout,
-    html: renderWidgetPreview({ design: dslResult.design }),
-    diagnostics: dslResult.diagnostics,
+    diagnostics: figmaResult.diagnostics,
     lossReport: compiled.lossReport
   };
 }
 
-function reviewWidgetDsl(input: ReviewWidgetDslInput): unknown {
-  const compiled = compileWidgetDslAndDesign(input) as {
-    design: ReturnType<typeof compileWidgetDsl>["design"];
+function reviewFigmaWidget(input: ReviewFigmaWidgetInput): unknown {
+  const compiled = compileFigmaWidgetAndDesign(input) as {
+    design: ReturnType<typeof compileFigmaWidget>["design"];
     layout: ReturnType<typeof compileWidgetDesign>["layout"];
-    html: string;
-    diagnostics: ReturnType<typeof compileWidgetDsl>["diagnostics"];
+    diagnostics: ReturnType<typeof compileFigmaWidget>["diagnostics"];
     lossReport: ReturnType<typeof compileWidgetDesign>["lossReport"];
   };
 
@@ -562,33 +552,25 @@ function reviewWidgetDsl(input: ReviewWidgetDslInput): unknown {
       layout: compiled.layout,
       profile: input.profile ?? "generic",
       viewport: compiled.design.viewport
-    }),
-    reviewQuality: validateWidgetReview({
-      html: compiled.html,
-      viewport: compiled.design.viewport
     })
   };
 }
 
-async function applyWidgetDsl(input: ApplyWidgetDslInput, client: BridgeLike): Promise<unknown> {
-  const reviewed = reviewWidgetDsl(input) as {
-    design: ReturnType<typeof compileWidgetDsl>["design"];
+async function applyFigmaWidget(input: ApplyFigmaWidgetInput, client: BridgeLike): Promise<unknown> {
+  const reviewed = reviewFigmaWidget(input) as {
+    design: ReturnType<typeof compileFigmaWidget>["design"];
     layout: ReturnType<typeof compileWidgetDesign>["layout"];
-    html: string;
-    diagnostics: ReturnType<typeof compileWidgetDsl>["diagnostics"];
+    diagnostics: ReturnType<typeof compileFigmaWidget>["diagnostics"];
     lossReport: ReturnType<typeof compileWidgetDesign>["lossReport"];
     quality: ReturnType<typeof validateWidgetLayoutQuality>;
-    reviewQuality: ReturnType<typeof validateWidgetReview>;
   };
   const qualityErrors = reviewed.quality.issues.filter((issue) => issue.severity === "error");
-  const reviewErrors = reviewed.reviewQuality.issues.filter((issue) => issue.severity === "error");
 
-  if (reviewed.diagnostics.length > 0 || reviewed.lossReport.length > 0 || qualityErrors.length > 0 || reviewErrors.length > 0) {
+  if (reviewed.diagnostics.length > 0 || reviewed.lossReport.length > 0 || qualityErrors.length > 0) {
     return {
       blocked: true,
       ...reviewed,
-      qualityErrors,
-      reviewErrors
+      qualityErrors
     };
   }
 
