@@ -1,3 +1,5 @@
+import { renderWidgetPreview } from "./widgetPreview.js";
+
 export interface CompileWidgetDesignInput {
   design: WidgetDesign;
 }
@@ -42,6 +44,7 @@ export interface CompileWidgetDesignResult {
   layout: {
     root: Record<string, unknown>;
   };
+  html: string;
   lossReport: DesignLoss[];
 }
 
@@ -72,6 +75,7 @@ export function compileWidgetDesign(input: CompileWidgetDesignInput): CompileWid
     layout: {
       root: compileNode(input.design.root, theme, lossReport, true)
     },
+    html: renderWidgetPreview({ design: input.design }),
     lossReport
   };
 }
@@ -292,6 +296,65 @@ function wrapContentWidgetChildren(name: string, children: Record<string, unknow
       children
     }
   ];
+}
+
+function renderHtml(
+  design: WidgetDesign,
+  theme: { colors: Record<string, string>; spacing: number },
+  lossReport: DesignLoss[]
+): string {
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(design.name)}</title>
+  <style>
+    body { margin: 0; background: ${theme.colors.background}; color: ${theme.colors.text}; font-family: Segoe UI, Arial, sans-serif; }
+    .screen { min-height: 100vh; display: grid; place-items: center; }
+    .panel { background: ${theme.colors.panel}; padding: 24px; min-width: 720px; }
+    .stack.vertical { display: flex; flex-direction: column; gap: ${theme.spacing}px; }
+    .stack.horizontal, .row { display: flex; align-items: center; gap: ${theme.spacing}px; }
+    button { background: ${theme.colors.primary}; color: ${theme.colors.text}; border: 0; padding: 10px 18px; }
+    .title { font-size: 34px; font-weight: 700; }
+  </style>
+</head>
+<body>${renderHtmlNode(design.root, lossReport)}</body>
+</html>`;
+}
+
+function renderHtmlNode(node: DesignNode, lossReport: DesignLoss[]): string {
+  collectStyleLosses(node, lossReport);
+  const children = (node.children ?? []).map((child) => renderHtmlNode(child, lossReport)).join("");
+  const id = escapeHtml(node.name);
+
+  switch (node.type) {
+    case "screen":
+      return `<main class="screen" data-node="${id}">${children}</main>`;
+    case "panel":
+      return `<section class="panel" data-node="${id}">${children}</section>`;
+    case "stack":
+      return `<div class="stack ${node.direction ?? "vertical"}" data-node="${id}">${children}</div>`;
+    case "row":
+      return `<div class="row" data-node="${id}">${children}</div>`;
+    case "scroll":
+      return `<div data-node="${id}" style="overflow:auto; max-height:520px">${children}</div>`;
+    case "tabs":
+      return renderTabsHtmlNode(node, lossReport);
+    case "text":
+      return `<div class="${node.variant === "title" ? "title" : "text"}" data-node="${id}">${escapeHtml(node.text ?? "")}</div>`;
+    case "button":
+      return `<button data-node="${id}">${escapeHtml(node.text ?? node.name)}</button>`;
+    case "slider":
+      return `<input data-node="${id}" type="range" min="0" max="1" step="0.01" value="${node.value ?? 0}">`;
+    case "toggle":
+      return `<input data-node="${id}" type="checkbox"${node.checked ? " checked" : ""}>`;
+    case "select":
+      return `<select data-node="${id}">${(node.options ?? []).map((option) => `<option>${escapeHtml(option)}</option>`).join("")}</select>`;
+    case "spacer":
+      return `<div data-node="${id}" style="height:${Number(node.style?.height ?? 16)}px"></div>`;
+    default:
+      return `<div data-node="${id}">${children}</div>`;
+  }
 }
 
 function compileTabsNode(
@@ -569,6 +632,18 @@ function toUmgAlignment(value: string): string {
   }
 }
 
+function renderTabsHtmlNode(node: DesignNode, lossReport: DesignLoss[]): string {
+  const tabs = node.tabs ?? [];
+  const buttons = tabs
+    .map((tab, index) => `<button class="tab-button${index === 0 ? " active" : ""}" data-tab="${escapeHtml(tab.id)}" data-node="${escapeHtml(tab.buttonName)}">${escapeHtml(tab.label)}</button>`)
+    .join("");
+  const pages = tabs
+    .map((tab, index) => `<div class="settings-page" data-page="${escapeHtml(tab.id)}" data-node="${escapeHtml(tab.pageName)}"${index === 0 ? "" : " hidden"}>${(tab.children ?? []).map((child) => renderHtmlNode(child, lossReport)).join("")}</div>`)
+    .join("");
+
+  return `<div class="tabs" data-node="${escapeHtml(node.name)}"><nav>${buttons}</nav><section>${pages}</section></div>`;
+}
+
 function collectStyleLosses(node: DesignNode, lossReport: DesignLoss[]): void {
   if (node.style?.blur !== undefined) {
     addLossOnce(lossReport, {
@@ -652,4 +727,12 @@ function rootSlot(style: Record<string, unknown>, viewport: { width: number; hei
       zOrder: 1
     }
   };
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }

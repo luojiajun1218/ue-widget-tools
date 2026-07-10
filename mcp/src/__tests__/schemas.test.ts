@@ -38,9 +38,9 @@ describe("Misty UI MCP schemas", () => {
         "ue.ui.finalize_widget",
         "ue.ui.validate_widget_layout",
         "ue.ui.compile_widget_design",
-        "ue.ui.compile_figma_widget",
-        "ue.ui.review_figma_widget",
-        "ue.ui.apply_figma_widget",
+        "ue.ui.compile_widget_dsl",
+        "ue.ui.review_widget_dsl",
+        "ue.ui.apply_widget_dsl",
         "ue.project.build_cpp",
         "ue.project.close_editor",
         "ue.project.open_editor",
@@ -187,27 +187,27 @@ describe("Misty UI MCP schemas", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts Figma widget compilation input", () => {
-    const result = toolInputSchemas["ue.ui.compile_figma_widget"].safeParse({
-      node: { type: "FRAME", name: "MenuScreen" }
+  it("accepts UMG-like widget DSL compilation input", () => {
+    const result = toolInputSchemas["ue.ui.compile_widget_dsl"].safeParse({
+      source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" /></Canvas>'
     });
 
     expect(result.success).toBe(true);
   });
 
-  it("accepts Figma widget review input with quality profile", () => {
-    const result = toolInputSchemas["ue.ui.review_figma_widget"].safeParse({
-      node: { type: "FRAME", name: "MenuScreen" },
+  it("accepts UMG-like widget DSL review input with quality profile", () => {
+    const result = toolInputSchemas["ue.ui.review_widget_dsl"].safeParse({
+      source: '<Canvas name="MenuScreen"><Button name="StartButton" text="Start" /></Canvas>',
       profile: "menu"
     });
 
     expect(result.success).toBe(true);
   });
 
-  it("accepts Figma widget apply input with defaults and event bindings", () => {
-    const result = toolInputSchemas["ue.ui.apply_figma_widget"].safeParse({
+  it("accepts widget DSL apply input with defaults and event bindings", () => {
+    const result = toolInputSchemas["ue.ui.apply_widget_dsl"].safeParse({
       assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
-      node: { type: "FRAME", name: "MenuScreen" },
+      source: '<Canvas name="MenuScreen"><Button name="ApplyButton" text="Apply" /></Canvas>',
       bindings: {
         buttons: [{ widget: "ApplyButton", function: "HandleApplyClicked" }],
         sliders: [{ widget: "VolumeSlider", function: "HandleVolumeChanged" }],

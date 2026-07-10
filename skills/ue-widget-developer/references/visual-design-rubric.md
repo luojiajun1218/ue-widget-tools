@@ -1,10 +1,10 @@
 # Visual Design Rubric
 
-Use this before generating Figma for non-trivial new UI or redesigns. The goal is not decoration; the goal is to avoid generic, repeated, default-looking UMG screens.
+Use this before drafting Widget DSL for non-trivial new UI or redesigns. The goal is not decoration; the goal is to avoid generic, repeated, default-looking UMG screens.
 
 ## Visual Originality Gate
 
-Write a short note with these fields before generating Figma:
+Write a short note with these fields before DSL:
 
 - `project_sources`: the UI docs or existing UI assets inspected first.
 - `observed_language`: what the project already does visually.
@@ -51,7 +51,7 @@ For settings screens, tabs are allowed but not mandatory. If tabs are used, make
 
 ## Review Pass
 
-Before writing to Unreal, inspect the generated Figma frame and reject it if:
+Before writing to Unreal, inspect the generated HTML and reject it if:
 
 - it could be described as "same as the last one with different labels"
 - it has no strong first-screen visual signal
@@ -60,4 +60,4 @@ Before writing to Unreal, inspect the generated Figma frame and reject it if:
 - controls dominate the screen without framing, summaries, previews, or hierarchy
 - it looks like a web admin form instead of game UI
 
-If rejected, revise the visual direction note first, then regenerate the Figma frame.
+If rejected, revise the visual direction note first, then regenerate DSL.
