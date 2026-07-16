@@ -4,16 +4,17 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("ue-widget-developer skill documentation", () => {
-  it("keeps Widget DSL web review as the design gate and forbids generic brainstorming detours", () => {
+  it("requires an approved frontend-design web screen before native UMG mapping", () => {
     const skillRoot = resolveSkillRoot();
     const skill = readFileSync(resolve(skillRoot, "SKILL.md"), "utf8");
     const workflow = readFileSync(resolve(skillRoot, "references/tool-workflow.md"), "utf8");
     const combined = `${skill}\n${workflow}`;
 
-    expect(combined).toContain("Widget DSL web review is the design gate");
-    expect(combined).toContain("Do not route MistyPlanet Widget Blueprint work through generic brainstorming");
+    expect(combined).toContain("invoke `frontend-design` first");
+    expect(combined).toContain("Do not create, reparent, or mutate a Widget Blueprint before the web-design stage");
+    expect(combined).toContain("Widget DSL Review Console is a mapping review tool");
     expect(combined).toContain("Do not write a superpowers spec or implementation plan for routine widget creation");
-    expect(combined).toContain("Create or update the review HTML before any Unreal asset mutation");
+    expect(combined).toContain("Do not mutate Unreal before this approval");
   });
 
   it("requires a visual originality gate so widget drafts do not reuse stale templates", () => {
@@ -48,6 +49,19 @@ describe("ue-widget-developer skill documentation", () => {
     expect(combined).toContain("design_language_fit");
     expect(combined).toContain("Do not proceed with visual design if `project_sources` is empty");
     expect(combined).toContain("Current Repository Hints");
+  });
+
+  it("makes web-to-UMG fidelity a baseline capture and image-diff gate", () => {
+    const skillRoot = resolveSkillRoot();
+    const skill = readFileSync(resolve(skillRoot, "SKILL.md"), "utf8");
+    const workflow = readFileSync(resolve(skillRoot, "references/tool-workflow.md"), "utf8");
+    const combined = `${skill}\n${workflow}`;
+
+    expect(combined).toContain("approved web screenshot is the baseline");
+    expect(combined).toContain("ue.ui.capture_widget_preview");
+    expect(combined).toContain("ue.ui.compare_ui_images");
+    expect(combined).toContain("overlay");
+    expect(combined).toContain("heatmap");
   });
 });
 

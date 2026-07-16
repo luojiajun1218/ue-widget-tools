@@ -182,6 +182,18 @@ function renderNode(node: DesignNode, theme: PreviewTheme, context: RenderContex
         ["width", px(numberOr(node.style?.width, 0))],
         ["height", px(numberOr(node.style?.height, 16))]
       ])}"></div>`;
+    case "image":
+      return `<img class="widget-image" data-node="${dataNode}" src="${escapeAttribute(node.previewSrc ?? node.text ?? "")}" style="${styleText([
+        ["position", context.isRootChild ? "absolute" : undefined],
+        ["inset", context.isRootChild && node.style?.fill === true ? "0" : undefined],
+        ["z-index", context.isRootChild ? String(context.rootChildIndex ?? 0) : undefined],
+        ["width", context.isRootChild && node.style?.fill === true ? "100%" : px(numberOr(node.style?.width, 0))],
+        ["height", context.isRootChild && node.style?.fill === true ? "100%" : px(numberOr(node.style?.height, 0))],
+        ["max-width", context.isRootChild ? undefined : "100%"],
+        ["max-height", context.isRootChild ? undefined : "100%"],
+        ["object-fit", context.isRootChild && node.style?.fill === true ? "cover" : "contain"],
+        ["align-self", alignSelfCss(node.style?.alignSelf)]
+      ])}" />`;
     default:
       return `<div data-node="${dataNode}">${children}</div>`;
   }

@@ -303,8 +303,12 @@ function compileDslNode(node: DslNode, diagnostics: WidgetDslDiagnostic[]): Desi
         name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "WidgetScreen")),
         children: node.children.map((child) => compileDslNode(child, diagnostics))
       };
+    case "CalibrationShell":
+      return compileContainerNode(node, "overlay", diagnostics);
     case "Border":
     case "Panel":
+    case "PanelFrame":
+    case "TelemetryDeck":
       return {
         type: "panel",
         name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", `${node.tag}Panel`)),
@@ -312,6 +316,7 @@ function compileDslNode(node: DslNode, diagnostics: WidgetDslDiagnostic[]): Desi
         children: node.children.map((child) => compileDslNode(child, diagnostics))
       };
     case "VerticalBox":
+    case "ModuleRail":
     case "HorizontalBox":
       return {
         type: "stack",
@@ -328,6 +333,34 @@ function compileDslNode(node: DslNode, diagnostics: WidgetDslDiagnostic[]): Desi
         text: stringAttr(node.attrs, "value", stringAttr(node.attrs, "text", stringAttr(node.attrs, "label", ""))),
         variant: stringAttr(node.attrs, "variant", boolAttr(node.attrs, "muted") ? "muted" : undefined),
         style: styleFromAttrs(node.attrs, { fontSizeKey: "fontSize" })
+      };
+    case "Readout":
+      return {
+        type: "text",
+        name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "ReadoutText")),
+        text: stringAttr(node.attrs, "value", stringAttr(node.attrs, "text", "")),
+        variant: "readout",
+        style: styleFromAttrs(node.attrs, { fontSizeKey: "fontSize" })
+      };
+    case "SectionLabel":
+      return {
+        type: "text",
+        name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "SectionLabelText")),
+        text: stringAttr(node.attrs, "value", stringAttr(node.attrs, "text", "")),
+        variant: "section",
+        style: styleFromAttrs(node.attrs, { fontSizeKey: "fontSize" })
+      };
+    case "StatusBadge":
+      return {
+        type: "panel",
+        name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "StatusBadge")),
+        style: styleFromAttrs(node.attrs, { backgroundKey: "backgroundColor" }),
+        children: [{
+          type: "text",
+          name: `${stringAttr(node.attrs, "name", "StatusBadge")}Text`,
+          text: stringAttr(node.attrs, "value", stringAttr(node.attrs, "text", "ONLINE")),
+          style: styleFromAttrs(node.attrs, { fontSizeKey: "fontSize" })
+        }]
       };
     case "Button":
       return {
@@ -387,12 +420,20 @@ function compileDslNode(node: DslNode, diagnostics: WidgetDslDiagnostic[]): Desi
         type: "image",
         name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "Image")),
         text: stringAttr(node.attrs, "source", stringAttr(node.attrs, "src", undefined)),
+        previewSrc: stringAttr(node.attrs, "previewSrc", undefined),
         style: styleFromAttrs(node.attrs)
       };
     case "ProgressBar":
       return {
         type: "progress",
         name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "ProgressBar")),
+        value: numberAttr(node.attrs, "value", 0),
+        style: styleFromAttrs(node.attrs)
+      };
+    case "SignalMeter":
+      return {
+        type: "progress",
+        name: stringAttr(node.attrs, "name", stringAttr(node.attrs, "id", "SignalMeter")),
         value: numberAttr(node.attrs, "value", 0),
         style: styleFromAttrs(node.attrs)
       };
@@ -458,7 +499,24 @@ function themeFromAttrs(attrs: Record<string, unknown>, diagnostics: WidgetDslDi
   reportUnsupportedAttrs({ tag: "Theme", attrs, children: [] }, diagnostics);
 
   const colors: Record<string, string> = {};
-  for (const key of ["background", "panel", "primary", "secondary", "text", "muted"]) {
+  const preset = stringAttr(attrs, "preset", undefined);
+  if (preset === "mistyCalibration") {
+    Object.assign(colors, {
+      background: "#050B0E",
+      panel: "#092126",
+      primary: "#00E0C0",
+      secondary: "#102F34",
+      text: "#ECFFFB",
+      muted: "#91ADA8",
+      void: "#050B0E",
+      surface: "#092126",
+      recess: "#102F34",
+      mint: "#00E0C0",
+      soft: "#91ADA8",
+      danger: "#E0A356"
+    });
+  }
+  for (const key of ["background", "panel", "primary", "secondary", "text", "muted", "void", "surface", "recess", "mint", "soft", "danger"]) {
     if (typeof attrs[key] === "string") {
       colors[key] = attrs[key];
     }
@@ -606,6 +664,23 @@ function styleFromAttrs(
   copyBoolean(attrs, style, "fill");
   copyBoolean(attrs, style, "auto");
   copyBoolean(attrs, style, "grow");
+  copyNumber(attrs, style, "opacity");
+  copyNumber(attrs, style, "zIndex");
+  copyNumber(attrs, style, "minValue");
+  copyNumber(attrs, style, "maxValue");
+  copyArray(attrs, style, "shadowOffset");
+  copyArray(attrs, style, "position");
+  copyArray(attrs, style, "canvasSize");
+  copyValue(attrs, style, "anchors");
+  copyString(attrs, style, "color");
+  copyString(attrs, style, "brushColor");
+  copyString(attrs, style, "shadowColor");
+  copyString(attrs, style, "justification");
+  copyString(attrs, style, "barColor");
+  copyString(attrs, style, "handleColor");
+  copyString(attrs, style, "activeColor");
+  copyString(attrs, style, "inactiveColor");
+  copyString(attrs, style, "asset");
   if (options.backgroundKey && typeof attrs.background === "string") {
     style[options.backgroundKey] = attrs.background;
   } else if (options.backgroundKey && typeof attrs.backgroundColor === "string") {
@@ -654,6 +729,12 @@ function copyBoolean(source: Record<string, unknown>, target: Record<string, unk
 
 function copyArray(source: Record<string, unknown>, target: Record<string, unknown>, key: string): void {
   if (Array.isArray(source[key])) {
+    target[key] = source[key];
+  }
+}
+
+function copyValue(source: Record<string, unknown>, target: Record<string, unknown>, key: string): void {
+  if (source[key] !== undefined) {
     target[key] = source[key];
   }
 }

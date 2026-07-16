@@ -4,25 +4,23 @@ Use the private MCP bridge tools in this order. Keep every asset path inside `/G
 
 ## Skill Routing
 
-This workflow is self-contained for MistyPlanet UMG widget work. Do not route MistyPlanet Widget Blueprint work through generic brainstorming/superpowers planning for requests to create, inspect, edit, validate, style, or wire Widget Blueprints. Use this document's Widget DSL review and generated HTML review as the design/review gate.
+For a new or redesigned screen, start with `frontend-design`: create a working web design, get explicit user approval, and save its 100%-scale default-state capture before any Unreal mutation. The web design is the visual source of truth. This document's Widget DSL Review Console reviews the later UMG mapping; it is not the design gate by itself.
 
-Do not write a superpowers spec or implementation plan for routine widget creation. Create or update the review HTML before any Unreal asset mutation.
+Do not write a superpowers spec or implementation plan for routine widget creation. Do not create/reparent/mutate a Widget Blueprint until the approved web baseline and web-to-UMG mapping contract exist, unless the user explicitly supplies an approved reference and asks to skip web design.
 
 ## Standard Sequence
 
 1. `ue.project.status`
 2. `ue.ui.inspect_widget_tree`
-3. For non-trivial widgets, call `ue.ui.generate_widget_cpp` to preview the C++ base class, then `ue.ui.write_widget_cpp` to write it under the generated UI C++ folders.
-4. Compile the project so the C++ class is available. Prefer `ue.project.rebuild_cpp_with_editor_restart` for normal UBT rebuilds because it closes UE, builds, and reopens UE automatically.
-5. Call `ue.ui.create_widget_blueprint` with `parentClass`, or `ue.ui.set_widget_parent_class` for an existing Widget Blueprint.
-6. For new non-trivial UI, read `project-ui-context.md`, gather project UI evidence, and write the design-language brief. Then read `visual-design-rubric.md`, write the visual direction note, and reject the stale template before drafting DSL.
-7. Draft Widget DSL. Treat the DSL as the source protocol; do not use HTML as source.
-8. Call `ue.ui.review_widget_dsl`. Use `profile: "settings"` for settings/menu settings panels. Fix all `diagnostics`, `lossReport`, `quality`, and `reviewQuality` errors before writing.
-9. Show or inspect the generated web Review Console before writing. Normal control interactions remain usable. Alt-click a widget to select it without triggering it, copy its Widget name, and request a focused AI revision against that stable name. Use the state buttons to review Normal, Hover, Pressed, and Disabled visuals. If user approval is part of the task, wait for approval here.
-10. Prefer `ue.ui.apply_widget_dsl` with explicit bindings. It reviews, applies, binds, and finalizes in one guarded sequence.
-11. For hand-authored layout JSON only, call `ue.ui.validate_widget_layout`, then `ue.ui.apply_widget_layout`, bind events, and finalize.
-12. Visually inspect the result in Unreal. Do not report completion if the layout is cramped, unstyled, unreadable, generic, or only default UMG controls.
-13. If generated C++ changed, call `ue.project.rebuild_cpp_with_editor_restart` unless you intentionally want to keep UE closed or use Live Coding.
+3. For new or redesigned UI, read `project-ui-context.md` and `visual-design-rubric.md`, then invoke `frontend-design` to create the working web page at the target viewport.
+4. Obtain explicit user approval for the web page and capture its exact default-state baseline. Do not mutate Unreal before this step passes.
+5. Write the web-to-UMG mapping contract: every visible web element needs a native UMG class/name; every interactive web control needs a handler target.
+6. Draft Widget DSL from that mapping. Call `ue.ui.review_widget_dsl`. Fix all `diagnostics`, `lossReport`, `quality`, and `reviewQuality` errors before writing.
+7. Apply the native UMG layout with no full-screen image/capture layers and no behavior bindings yet. Prefer `ue.ui.apply_widget_dsl` without bindings; for hand-authored JSON, call `ue.ui.validate_widget_layout` then `ue.ui.apply_widget_layout`.
+8. Capture and compare the layout/default state against the approved web baseline. Iterate until geometry, palette, typography, and control states align.
+9. Only now generate/write the UI-only C++ base class when needed, compile it, and bind controls through MCP tools.
+10. Finalize, capture, compare, and inspect WidgetTree plus EventGraph. Obtain a separate read-only visual review before reporting visual-sync completion.
+11. If generated C++ changed, call `ue.project.rebuild_cpp_with_editor_restart` unless you intentionally want to keep UE closed or use Live Coding.
 
 If any step reports warnings or diagnostics, stop and summarize them before making another mutation.
 
@@ -249,6 +247,28 @@ Combo box handlers must accept the selected `FString`; if the bridge cannot safe
 ```
 
 After binding, always run `ue.ui.finalize_widget`. Report the bound control, function name, compile result, save result, and any diagnostics.
+
+## Visual Fidelity Capture and Comparison
+
+The capture command is read-only with respect to assets. It accepts only Widget Blueprints under `/Game/MistyPlanet/UI/` and writes only to `Saved/WidgetBridge/Previews`:
+
+```json
+{
+  "assetPath": "/Game/MistyPlanet/UI/WBP_Setting",
+  "captureId": "settings-default"
+}
+```
+
+Compare a project-local approved reference against the captured candidate. The candidate must remain in `Saved/WidgetBridge/Previews`; the heatmap is written there as well:
+
+```json
+{
+  "referencePath": ".superpowers/brainstorm/settings-web-20260715/review-v2b.png",
+  "candidatePath": "Saved/WidgetBridge/Previews/settings-default.png",
+  "comparisonId": "settings-default-review",
+  "pixelThreshold": 12
+}
+```
 
 ## Finalize Widget Example
 

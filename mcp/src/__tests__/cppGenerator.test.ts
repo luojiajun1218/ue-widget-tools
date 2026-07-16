@@ -18,7 +18,7 @@ describe("generateWidgetCpp", () => {
     expect(generated.header).toContain("void CloseShop();");
     expect(generated.header).toContain("UPROPERTY(meta=(BindWidget))");
     expect(generated.header).toContain("TObjectPtr<UButton> CloseButton;");
-    expect(generated.cpp).toContain('#include "ShopWidget.h"');
+    expect(generated.cpp).toContain('#include "UI/Generated/ShopWidget.h"');
     expect(generated.cpp).toContain("void UShopWidget::CloseShop()");
   });
 

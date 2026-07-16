@@ -36,6 +36,8 @@ describe("Misty UI MCP schemas", () => {
         "ue.ui.bind_combobox_selection_changed_to_function",
         "ue.ui.write_widget_cpp",
         "ue.ui.finalize_widget",
+        "ue.ui.capture_widget_preview",
+        "ue.ui.compare_ui_images",
         "ue.ui.validate_widget_layout",
         "ue.ui.compile_widget_design",
         "ue.ui.compile_widget_dsl",
@@ -81,6 +83,30 @@ describe("Misty UI MCP schemas", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("accepts safe capture and comparison inputs while rejecting unsafe IDs", () => {
+    expect(
+      toolInputSchemas["ue.ui.capture_widget_preview"].safeParse({
+        assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
+        captureId: "settings-default"
+      }).success
+    ).toBe(true);
+    expect(
+      toolInputSchemas["ue.ui.capture_widget_preview"].safeParse({
+        assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
+        captureId: "../escape"
+      }).success
+    ).toBe(false);
+    const comparison = toolInputSchemas["ue.ui.compare_ui_images"].safeParse({
+      referencePath: ".superpowers/brainstorm/settings-web-20260715/review-v2b.png",
+      candidatePath: "Saved/WidgetBridge/Previews/settings-default.png",
+      comparisonId: "settings-default-compare"
+    });
+    expect(comparison.success).toBe(true);
+    if (comparison.success) {
+      expect(comparison.data.pixelThreshold).toBe(12);
+    }
   });
 
   it("accepts project C++ build input", () => {

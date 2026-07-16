@@ -28,6 +28,7 @@ export interface DesignNode {
   value?: number;
   checked?: boolean;
   options?: string[];
+  previewSrc?: string;
   style?: Record<string, unknown>;
   children?: DesignNode[];
 }
@@ -103,6 +104,7 @@ function compileNode(
         type: "Border",
         name: node.name,
         backgroundColor: resolveColor(style.backgroundColor, theme.colors, "panel"),
+        ...nativeVisualProps(style, theme.colors),
         padding: normalizePadding(style.padding, theme.spacing),
         horizontalAlignment: "Fill",
         verticalAlignment: "Fill",
@@ -139,6 +141,7 @@ function compileNode(
         text: node.text ?? "",
         color: resolveColor(style.color, theme.colors, node.variant === "muted" ? "muted" : "text"),
         fontSize: numberOr(style.fontSize, node.variant === "title" ? 34 : 18),
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style)
       };
@@ -147,6 +150,7 @@ function compileNode(
         type: "Button",
         name: node.name,
         backgroundColor: resolveColor(style.backgroundColor, theme.colors, node.variant === "primary" ? "primary" : "secondary"),
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style),
         children: [
@@ -164,6 +168,7 @@ function compileNode(
         type: "Slider",
         name: node.name,
         value: node.value ?? 0,
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style)
       };
@@ -171,7 +176,8 @@ function compileNode(
       return {
         type: "CheckBox",
         name: node.name,
-        checked: node.checked ?? false,
+        isChecked: node.checked ?? false,
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style)
       };
@@ -180,6 +186,7 @@ function compileNode(
         type: "ComboBoxString",
         name: node.name,
         options: node.options ?? [],
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style)
       };
@@ -230,14 +237,16 @@ function compileNode(
         type: "Image",
         name: node.name,
         brush: typeof node.text === "string" ? node.text : undefined,
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
-        ...styleSlot(style)
+        ...(isRoot ? rootSlot(style, theme.viewport) : styleSlot(style))
       };
     case "progress":
       return {
         type: "ProgressBar",
         name: node.name,
         percent: node.value ?? 0,
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style)
       };
@@ -246,6 +255,7 @@ function compileNode(
         type: "Button",
         name: node.name,
         backgroundColor: resolveColor(style.backgroundColor, theme.colors, node.variant === "primary" ? "primary" : "secondary"),
+        ...nativeVisualProps(style, theme.colors),
         ...boxOverrides(style),
         ...styleSlot(style),
         children: [
@@ -265,6 +275,7 @@ function compileNode(
         type: "Border",
         name: node.name,
         backgroundColor: resolveColor(style.backgroundColor, theme.colors, "panel"),
+        ...nativeVisualProps(style, theme.colors),
         padding: normalizePadding(style.padding, theme.spacing),
         ...styleSlot(style),
         children: wrapContentWidgetChildren(node.name, children)
@@ -556,6 +567,18 @@ function styleSlot(style: Record<string, unknown>): Record<string, unknown> {
   if (typeof style.valignSelf === "string") {
     slot.verticalAlignment = toUmgAlignment(style.valignSelf);
   }
+  if (style.anchors !== undefined) {
+    slot.anchors = style.anchors;
+  }
+  if (Array.isArray(style.position)) {
+    slot.position = style.position;
+  }
+  if (Array.isArray(style.canvasSize)) {
+    slot.size = style.canvasSize;
+  }
+  if (typeof style.zIndex === "number") {
+    slot.zOrder = style.zIndex;
+  }
 
   return Object.keys(slot).length > 0 ? { slot } : {};
 }
@@ -674,6 +697,27 @@ function resolveColor(value: unknown, colors: Record<string, string>, fallbackKe
   return colors[fallbackKey] ?? "#FFFFFFFF";
 }
 
+/**
+ * Preserve the rich, UMG-native visual contract in the bridge payload.  The
+ * bridge owns how a version of UE realizes a given brush/control property;
+ * the compiler's job is to retain every supported visual intent and resolve
+ * theme tokens before it crosses the process boundary.
+ */
+function nativeVisualProps(style: Record<string, unknown>, colors: Record<string, string>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of ["color", "brushColor", "shadowColor", "barColor", "handleColor", "activeColor", "inactiveColor"]) {
+    if (typeof style[key] === "string") {
+      result[key] = resolveColor(style[key], colors, key);
+    }
+  }
+  for (const key of ["shadowOffset", "anchors", "position", "canvasSize", "opacity", "zIndex", "minValue", "maxValue", "justification", "asset"]) {
+    if (style[key] !== undefined) {
+      result[key] = style[key];
+    }
+  }
+  return result;
+}
+
 function normalizePadding(value: unknown, fallback: number): number[] {
   if (typeof value === "number") {
     return [value, value, value, value];
@@ -712,7 +756,7 @@ function rootSlot(style: Record<string, unknown>, viewport: { width: number; hei
         anchors: { minimum: [0, 0], maximum: [1, 1] },
         alignment: [0, 0],
         size: [0, 0],
-        zOrder: 1
+        zOrder: numberOr(style.zIndex, 1)
       }
     };
   }
@@ -724,7 +768,7 @@ function rootSlot(style: Record<string, unknown>, viewport: { width: number; hei
       anchors: { minimum: [0.5, 0.5], maximum: [0.5, 0.5] },
       alignment: [0.5, 0.5],
       size: [width, height],
-      zOrder: 1
+      zOrder: numberOr(style.zIndex, 1)
     }
   };
 }

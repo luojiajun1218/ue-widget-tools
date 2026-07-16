@@ -27,24 +27,147 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Components/WidgetSwitcher.h"
 #include "Dom/JsonObject.h"
+#include "EditorFramework/AssetImportData.h"
+#include "Engine/Font.h"
+#include "Engine/Texture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Materials/MaterialInterface.h"
 #include "FileHelpers.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Logging/TokenizedMessage.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
 #include "MWBBlueprintInspectService.h"
 #include "MWBBlueprintGraphService.h"
 #include "MWBJson.h"
 #include "ScopedTransaction.h"
+#include "Slate/WidgetRenderer.h"
+#include "Styling/SlateTypes.h"
+#include "Tasks/Task.h"
 #include "UObject/Package.h"
+#include "UObject/SoftObjectPath.h"
+#include "AssetImportTask.h"
+#include "Brushes/SlateColorBrush.h"
 #include "Blueprint/UserWidget.h"
 #include "WidgetBlueprint.h"
+#include "WidgetBlueprintEditorUtils.h"
 #include "WidgetBlueprintFactory.h"
 
 namespace
 {
     constexpr TCHAR AllowedWidgetBlueprintPathPrefix[] = TEXT("/Game/MistyPlanet/UI/");
+    constexpr int32 PreviewWidth = 1920;
+    constexpr int32 PreviewHeight = 1080;
+
+    FString PreviewDirectory()
+    {
+        return FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("WidgetBridge/Previews"));
+    }
+
+    bool IsSafeFileStem(const FString& Value)
+    {
+        if (Value.IsEmpty() || Value.Len() > 96)
+        {
+            return false;
+        }
+
+        for (const TCHAR Character : Value)
+        {
+            if (!FChar::IsAlnum(Character) && Character != TEXT('_') && Character != TEXT('-'))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    FString NormalizeAbsolutePath(const FString& Value)
+    {
+        FString Result = FPaths::ConvertRelativePathToFull(Value);
+        FPaths::NormalizeFilename(Result);
+        return Result;
+    }
+
+    FString ResolveProjectPath(const FString& Value)
+    {
+        return NormalizeAbsolutePath(FPaths::IsRelative(Value) ? FPaths::ProjectDir() / Value : Value);
+    }
+
+    bool IsPathWithin(const FString& Path, const FString& Root)
+    {
+        FString NormalizedPath = NormalizeAbsolutePath(Path);
+        FString NormalizedRoot = NormalizeAbsolutePath(Root);
+        if (!NormalizedRoot.EndsWith(TEXT("/")))
+        {
+            NormalizedRoot += TEXT("/");
+        }
+        return NormalizedPath.StartsWith(NormalizedRoot, ESearchCase::IgnoreCase);
+    }
+
+    bool IsPngPath(const FString& Path)
+    {
+        return FPaths::GetExtension(Path).Equals(TEXT("png"), ESearchCase::IgnoreCase);
+    }
+
+    bool SavePng(const TArray<FColor>& Pixels, const int32 Width, const int32 Height, const FString& FilePath, FString& OutError)
+    {
+        IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+        const TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
+        if (!ImageWrapper.IsValid() || !ImageWrapper->SetRaw(Pixels.GetData(), Pixels.Num() * sizeof(FColor), Width, Height, ERGBFormat::BGRA, 8))
+        {
+            OutError = TEXT("Could not encode PNG pixel data.");
+            return false;
+        }
+
+        const TArray64<uint8> Compressed = ImageWrapper->GetCompressed(100);
+        if (Compressed.IsEmpty() || !FFileHelper::SaveArrayToFile(Compressed, *FilePath))
+        {
+            OutError = FString::Printf(TEXT("Could not write PNG '%s'."), *FilePath);
+            return false;
+        }
+        return true;
+    }
+
+    bool LoadPng(const FString& FilePath, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, FString& OutError)
+    {
+        TArray64<uint8> Compressed;
+        if (!FFileHelper::LoadFileToArray(Compressed, *FilePath))
+        {
+            OutError = FString::Printf(TEXT("Could not read PNG '%s'."), *FilePath);
+            return false;
+        }
+
+        IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+        const TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
+        if (!ImageWrapper.IsValid() || !ImageWrapper->SetCompressed(Compressed.GetData(), Compressed.Num()))
+        {
+            OutError = FString::Printf(TEXT("Could not decode PNG '%s'."), *FilePath);
+            return false;
+        }
+
+        OutWidth = ImageWrapper->GetWidth();
+        OutHeight = ImageWrapper->GetHeight();
+        TArray64<uint8> Raw;
+        if (!ImageWrapper->GetRaw(ERGBFormat::BGRA, 8, Raw))
+        {
+            OutError = FString::Printf(TEXT("Could not decompress PNG '%s'."), *FilePath);
+            return false;
+        }
+        const int64 ExpectedBytes = static_cast<int64>(OutWidth) * static_cast<int64>(OutHeight) * sizeof(FColor);
+        if (OutWidth <= 0 || OutHeight <= 0 || Raw.Num() != ExpectedBytes)
+        {
+            OutError = FString::Printf(TEXT("PNG '%s' has unsupported pixel data."), *FilePath);
+            return false;
+        }
+
+        OutPixels.SetNumUninitialized(OutWidth * OutHeight);
+        FMemory::Memcpy(OutPixels.GetData(), Raw.GetData(), ExpectedBytes);
+        return true;
+    }
 
     FString ToLongPackageName(const FString& AssetPath)
     {
@@ -245,6 +368,300 @@ namespace
         }
 
         return false;
+    }
+
+    bool IsAllowedUiAssetPath(const FString& AssetPath)
+    {
+        return AssetPath.StartsWith(TEXT("/Game/MistyPlanet/UI/"), ESearchCase::CaseSensitive)
+            && !AssetPath.Contains(TEXT(".."));
+    }
+
+    bool TryResolveUiImportSource(const FString& RequestedPath, FString& OutSourcePath)
+    {
+        if (RequestedPath.IsEmpty() || !FPaths::GetExtension(RequestedPath).Equals(TEXT("png"), ESearchCase::IgnoreCase))
+        {
+            return false;
+        }
+
+        const FString ProjectRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+        const FString SourcePath = FPaths::ConvertRelativePathToFull(
+            FPaths::IsRelative(RequestedPath) ? FPaths::Combine(ProjectRoot, RequestedPath) : RequestedPath);
+        const FString CodexRoot = FPaths::Combine(ProjectRoot, TEXT(".codex-local"));
+        const FString ReviewRoot = FPaths::Combine(ProjectRoot, TEXT(".superpowers"));
+        const FString UiSourceRoot = FPaths::Combine(ProjectRoot, TEXT("Content/MistyPlanet/UI/SourceArt"));
+
+        if (!FPaths::FileExists(SourcePath)
+            || (!FPaths::IsUnderDirectory(SourcePath, CodexRoot)
+                && !FPaths::IsUnderDirectory(SourcePath, ReviewRoot)
+                && !FPaths::IsUnderDirectory(SourcePath, UiSourceRoot)))
+        {
+            return false;
+        }
+
+        OutSourcePath = SourcePath;
+        return true;
+    }
+
+    bool TryGetUiResourceObject(const FString& AssetPath, UObject*& OutResource)
+    {
+        OutResource = nullptr;
+        if (!IsAllowedUiAssetPath(AssetPath))
+        {
+            return false;
+        }
+
+        UObject* Resource = LoadObject<UObject>(nullptr, *AssetPath);
+        if (!Resource)
+        {
+            Resource = LoadObject<UObject>(nullptr, *ToObjectPath(AssetPath));
+        }
+        if (!Resource || (!Resource->IsA<UTexture2D>() && !Resource->IsA<UMaterialInterface>()))
+        {
+            return false;
+        }
+
+        OutResource = Resource;
+        return true;
+    }
+
+    bool TryGetBrushDrawType(const FString& Value, ESlateBrushDrawType::Type& OutValue)
+    {
+        if (Value.Equals(TEXT("Image"), ESearchCase::IgnoreCase))
+        {
+            OutValue = ESlateBrushDrawType::Image;
+            return true;
+        }
+        if (Value.Equals(TEXT("Box"), ESearchCase::IgnoreCase))
+        {
+            OutValue = ESlateBrushDrawType::Box;
+            return true;
+        }
+        if (Value.Equals(TEXT("Border"), ESearchCase::IgnoreCase))
+        {
+            OutValue = ESlateBrushDrawType::Border;
+            return true;
+        }
+        if (Value.Equals(TEXT("RoundedBox"), ESearchCase::IgnoreCase))
+        {
+            OutValue = ESlateBrushDrawType::RoundedBox;
+            return true;
+        }
+        return false;
+    }
+
+    bool TryGetBrush(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, FSlateBrush& OutBrush)
+    {
+        if (!Object.IsValid())
+        {
+            return false;
+        }
+
+        const TSharedPtr<FJsonObject>* BrushObject = nullptr;
+        if (!Object->TryGetObjectField(Field, BrushObject) || !BrushObject || !BrushObject->IsValid())
+        {
+            return false;
+        }
+
+        FString DrawAs;
+        ESlateBrushDrawType::Type DrawType = ESlateBrushDrawType::Image;
+        if ((*BrushObject)->TryGetStringField(TEXT("drawAs"), DrawAs))
+        {
+            TryGetBrushDrawType(DrawAs, DrawType);
+        }
+
+        FLinearColor Tint = FLinearColor::White;
+        TryGetLinearColor(*BrushObject, TEXT("tint"), Tint);
+
+        bool bSolidColor = false;
+        (*BrushObject)->TryGetBoolField(TEXT("solidColor"), bSolidColor);
+        if (bSolidColor)
+        {
+            FSlateColorBrush SolidBrush(Tint);
+            SolidBrush.DrawAs = DrawType;
+
+            FMargin Margin;
+            if (TryGetMargin(*BrushObject, TEXT("margin"), Margin))
+            {
+                SolidBrush.Margin = Margin;
+            }
+
+            FVector2D ImageSize;
+            if (TryGetVector2D(*BrushObject, TEXT("imageSize"), ImageSize))
+            {
+                SolidBrush.ImageSize = ImageSize;
+            }
+
+            OutBrush = SolidBrush;
+            return true;
+        }
+
+        FString ResourcePath;
+        if (!(*BrushObject)->TryGetStringField(TEXT("resource"), ResourcePath))
+        {
+            (*BrushObject)->TryGetStringField(TEXT("assetPath"), ResourcePath);
+        }
+
+        UObject* Resource = nullptr;
+        if (!TryGetUiResourceObject(ResourcePath, Resource))
+        {
+            return false;
+        }
+
+        FSlateBrush Brush;
+        Brush.SetResourceObject(Resource);
+
+        Brush.DrawAs = DrawType;
+
+        FMargin Margin;
+        if (TryGetMargin(*BrushObject, TEXT("margin"), Margin))
+        {
+            Brush.Margin = Margin;
+        }
+
+        Brush.TintColor = FSlateColor(Tint);
+
+        FVector2D ImageSize;
+        if (TryGetVector2D(*BrushObject, TEXT("imageSize"), ImageSize))
+        {
+            Brush.ImageSize = ImageSize;
+        }
+
+        OutBrush = Brush;
+        return true;
+    }
+
+    void ApplyRenderProperties(UWidget* Widget, const TSharedPtr<FJsonObject>& WidgetObject)
+    {
+        if (!Widget || !WidgetObject.IsValid())
+        {
+            return;
+        }
+
+        double Opacity = 1.0;
+        if (TryGetNumber(WidgetObject, TEXT("opacity"), Opacity))
+        {
+            Widget->SetRenderOpacity(static_cast<float>(Opacity));
+        }
+
+        const TSharedPtr<FJsonObject>* TransformObject = nullptr;
+        if (!WidgetObject->TryGetObjectField(TEXT("renderTransform"), TransformObject) || !TransformObject || !TransformObject->IsValid())
+        {
+            return;
+        }
+
+        FVector2D Value;
+        if (TryGetVector2D(*TransformObject, TEXT("translation"), Value))
+        {
+            Widget->SetRenderTranslation(Value);
+        }
+        if (TryGetVector2D(*TransformObject, TEXT("scale"), Value))
+        {
+            Widget->SetRenderScale(Value);
+        }
+        if (TryGetVector2D(*TransformObject, TEXT("shear"), Value))
+        {
+            Widget->SetRenderShear(Value);
+        }
+
+        double Angle = 0.0;
+        if (TryGetNumber(*TransformObject, TEXT("angle"), Angle))
+        {
+            Widget->SetRenderTransformAngle(static_cast<float>(Angle));
+        }
+    }
+
+    void ApplyButtonStyle(UButton* Button, const TSharedPtr<FJsonObject>& WidgetObject)
+    {
+        const TSharedPtr<FJsonObject>* StyleObject = nullptr;
+        if (!Button || !WidgetObject.IsValid() || !WidgetObject->TryGetObjectField(TEXT("buttonStyle"), StyleObject) || !StyleObject || !StyleObject->IsValid())
+        {
+            return;
+        }
+
+        FButtonStyle Style = Button->GetStyle();
+        FSlateBrush Brush;
+        if (TryGetBrush(*StyleObject, TEXT("normal"), Brush)) Style.Normal = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("hovered"), Brush)) Style.Hovered = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("pressed"), Brush)) Style.Pressed = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("disabled"), Brush)) Style.Disabled = Brush;
+
+        FMargin Padding;
+        if (TryGetMargin(*StyleObject, TEXT("normalPadding"), Padding)) Style.NormalPadding = Padding;
+        if (TryGetMargin(*StyleObject, TEXT("pressedPadding"), Padding)) Style.PressedPadding = Padding;
+        Button->SetStyle(Style);
+    }
+
+    void ApplySliderStyle(USlider* Slider, const TSharedPtr<FJsonObject>& WidgetObject)
+    {
+        const TSharedPtr<FJsonObject>* StyleObject = nullptr;
+        if (!Slider || !WidgetObject.IsValid() || !WidgetObject->TryGetObjectField(TEXT("sliderStyle"), StyleObject) || !StyleObject || !StyleObject->IsValid())
+        {
+            return;
+        }
+
+        FSliderStyle Style = Slider->GetWidgetStyle();
+        FSlateBrush Brush;
+        if (TryGetBrush(*StyleObject, TEXT("normalBar"), Brush)) Style.NormalBarImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("hoveredBar"), Brush)) Style.HoveredBarImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("disabledBar"), Brush)) Style.DisabledBarImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("normalThumb"), Brush)) Style.NormalThumbImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("hoveredThumb"), Brush)) Style.HoveredThumbImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("disabledThumb"), Brush)) Style.DisabledThumbImage = Brush;
+
+        double BarThickness = 0.0;
+        if (TryGetNumber(*StyleObject, TEXT("barThickness"), BarThickness)) Style.BarThickness = static_cast<float>(BarThickness);
+        Slider->SetWidgetStyle(Style);
+    }
+
+    void ApplyCheckBoxStyle(UCheckBox* CheckBox, const TSharedPtr<FJsonObject>& WidgetObject)
+    {
+        const TSharedPtr<FJsonObject>* StyleObject = nullptr;
+        if (!CheckBox || !WidgetObject.IsValid() || !WidgetObject->TryGetObjectField(TEXT("checkBoxStyle"), StyleObject) || !StyleObject || !StyleObject->IsValid())
+        {
+            return;
+        }
+
+        FCheckBoxStyle Style = CheckBox->GetWidgetStyle();
+        FSlateBrush Brush;
+        if (TryGetBrush(*StyleObject, TEXT("unchecked"), Brush)) Style.UncheckedImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("uncheckedHovered"), Brush)) Style.UncheckedHoveredImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("uncheckedPressed"), Brush)) Style.UncheckedPressedImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("checked"), Brush)) Style.CheckedImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("checkedHovered"), Brush)) Style.CheckedHoveredImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("checkedPressed"), Brush)) Style.CheckedPressedImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("undetermined"), Brush)) Style.UndeterminedImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("background"), Brush)) Style.BackgroundImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("backgroundHovered"), Brush)) Style.BackgroundHoveredImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("backgroundPressed"), Brush)) Style.BackgroundPressedImage = Brush;
+
+        FMargin Padding;
+        if (TryGetMargin(*StyleObject, TEXT("padding"), Padding)) Style.Padding = Padding;
+        CheckBox->SetWidgetStyle(Style);
+    }
+
+    void ApplyComboBoxStyle(UComboBoxString* ComboBox, const TSharedPtr<FJsonObject>& WidgetObject)
+    {
+        const TSharedPtr<FJsonObject>* StyleObject = nullptr;
+        if (!ComboBox || !WidgetObject.IsValid() || !WidgetObject->TryGetObjectField(TEXT("comboBoxStyle"), StyleObject) || !StyleObject || !StyleObject->IsValid())
+        {
+            return;
+        }
+
+        FComboBoxStyle Style = ComboBox->GetWidgetStyle();
+        FSlateBrush Brush;
+        if (TryGetBrush(*StyleObject, TEXT("normal"), Brush)) Style.ComboButtonStyle.ButtonStyle.Normal = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("hovered"), Brush)) Style.ComboButtonStyle.ButtonStyle.Hovered = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("pressed"), Brush)) Style.ComboButtonStyle.ButtonStyle.Pressed = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("disabled"), Brush)) Style.ComboButtonStyle.ButtonStyle.Disabled = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("downArrow"), Brush)) Style.ComboButtonStyle.DownArrowImage = Brush;
+        if (TryGetBrush(*StyleObject, TEXT("menuBorder"), Brush)) Style.ComboButtonStyle.MenuBorderBrush = Brush;
+
+        FMargin Padding;
+        if (TryGetMargin(*StyleObject, TEXT("contentPadding"), Padding)) Style.ComboButtonStyle.ContentPadding = Padding;
+        if (TryGetMargin(*StyleObject, TEXT("menuBorderPadding"), Padding)) Style.ComboButtonStyle.MenuBorderPadding = Padding;
+        if (TryGetMargin(*StyleObject, TEXT("menuRowPadding"), Padding)) Style.MenuRowPadding = Padding;
+        ComboBox->SetWidgetStyle(Style);
+
     }
 
     bool TryGetAnchors(const TSharedPtr<FJsonObject>& Object, const TCHAR* Field, FAnchors& OutValue)
@@ -708,6 +1125,8 @@ namespace
             Widget->SetVisibility(Visibility);
         }
 
+        ApplyRenderProperties(Widget, WidgetObject);
+
         if (UTextBlock* TextBlock = Cast<UTextBlock>(Widget))
         {
             FString Text;
@@ -723,10 +1142,38 @@ namespace
             }
 
             double FontSize = 0.0;
-            if (TryGetNumber(WidgetObject, TEXT("fontSize"), FontSize))
+            FString FontAssetPath;
+            FString Typeface;
+            double LetterSpacing = 0.0;
+            const bool bHasFontSize = TryGetNumber(WidgetObject, TEXT("fontSize"), FontSize);
+            const bool bHasFontAsset = WidgetObject->TryGetStringField(TEXT("fontAsset"), FontAssetPath) && IsAllowedUiAssetPath(FontAssetPath);
+            const bool bHasTypeface = WidgetObject->TryGetStringField(TEXT("fontTypeface"), Typeface) && !Typeface.IsEmpty();
+            const bool bHasLetterSpacing = TryGetNumber(WidgetObject, TEXT("letterSpacing"), LetterSpacing);
+            if (bHasFontSize || bHasFontAsset || bHasTypeface || bHasLetterSpacing)
             {
                 FSlateFontInfo Font = TextBlock->GetFont();
-                Font.Size = static_cast<int32>(FontSize);
+                if (bHasFontSize)
+                {
+                    Font.Size = static_cast<int32>(FontSize);
+                }
+
+                if (bHasFontAsset)
+                {
+                    if (UFont* FontAsset = LoadObject<UFont>(nullptr, *FontAssetPath))
+                    {
+                        Font.FontObject = FontAsset;
+                    }
+                }
+
+                if (bHasTypeface)
+                {
+                    Font.TypefaceFontName = FName(*Typeface);
+                }
+
+                if (bHasLetterSpacing)
+                {
+                    Font.LetterSpacing = static_cast<int32>(LetterSpacing);
+                }
                 TextBlock->SetFont(Font);
             }
 
@@ -750,6 +1197,12 @@ namespace
         }
         else if (UBorder* Border = Cast<UBorder>(Widget))
         {
+            FSlateBrush Brush;
+            if (TryGetBrush(WidgetObject, TEXT("brush"), Brush))
+            {
+                Border->SetBrush(Brush);
+            }
+
             FLinearColor BrushColor;
             if (TryGetLinearColor(WidgetObject, TEXT("brushColor"), BrushColor)
                 || TryGetLinearColor(WidgetObject, TEXT("backgroundColor"), BrushColor))
@@ -788,9 +1241,27 @@ namespace
             {
                 Button->SetBackgroundColor(BackgroundColor);
             }
+
+            ApplyButtonStyle(Button, WidgetObject);
         }
         else if (UImage* Image = Cast<UImage>(Widget))
         {
+            FSlateBrush Brush;
+            if (TryGetBrush(WidgetObject, TEXT("brush"), Brush)
+                || TryGetBrush(WidgetObject, TEXT("brushStyle"), Brush))
+            {
+                Image->SetBrush(Brush);
+            }
+
+            FString BrushPath;
+            if (WidgetObject->TryGetStringField(TEXT("brush"), BrushPath) && !BrushPath.IsEmpty())
+            {
+                if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *BrushPath))
+                {
+                    Image->SetBrushFromTexture(Texture, true);
+                }
+            }
+
             FLinearColor Color;
             if (TryGetLinearColor(WidgetObject, TEXT("color"), Color)
                 || TryGetLinearColor(WidgetObject, TEXT("brushColor"), Color))
@@ -805,6 +1276,8 @@ namespace
             {
                 CheckBox->SetIsChecked(bIsChecked);
             }
+
+            ApplyCheckBoxStyle(CheckBox, WidgetObject);
         }
         else if (USlider* Slider = Cast<USlider>(Widget))
         {
@@ -817,10 +1290,22 @@ namespace
             {
                 Slider->SetMaxValue(static_cast<float>(Number));
             }
-            if (TryGetNumber(WidgetObject, TEXT("value"), Number))
-            {
-                Slider->SetValue(static_cast<float>(Number));
-            }
+        if (TryGetNumber(WidgetObject, TEXT("value"), Number))
+        {
+            Slider->SetValue(static_cast<float>(Number));
+        }
+
+        FLinearColor SliderColor;
+        if (TryGetLinearColor(WidgetObject, TEXT("barColor"), SliderColor))
+        {
+            Slider->SetSliderBarColor(SliderColor);
+        }
+        if (TryGetLinearColor(WidgetObject, TEXT("handleColor"), SliderColor))
+        {
+            Slider->SetSliderHandleColor(SliderColor);
+        }
+
+        ApplySliderStyle(Slider, WidgetObject);
         }
         else if (UComboBoxString* ComboBox = Cast<UComboBoxString>(Widget))
         {
@@ -834,6 +1319,15 @@ namespace
                         ComboBox->AddOption(OptionValue->AsString());
                     }
                 }
+            }
+
+            ApplyComboBoxStyle(ComboBox, WidgetObject);
+
+            double SelectedIndex = 0.0;
+            TryGetNumber(WidgetObject, TEXT("selectedIndex"), SelectedIndex);
+            if (ComboBox->GetOptionCount() > 0)
+            {
+                ComboBox->SetSelectedIndex(FMath::Clamp(static_cast<int32>(SelectedIndex), 0, ComboBox->GetOptionCount() - 1));
             }
         }
         else if (USizeBox* SizeBox = Cast<USizeBox>(Widget))
@@ -1018,6 +1512,21 @@ TSharedRef<FJsonObject> FMWBWidgetBlueprintService::HandleCommand(
     if (Command == TEXT("finalizeWidget"))
     {
         return FinalizeWidget(TransactionId, Payload, OutStatusCode);
+    }
+
+    if (Command == TEXT("importUiPng"))
+    {
+        return ImportUiPng(TransactionId, Payload, OutStatusCode);
+    }
+
+    if (Command == TEXT("captureWidgetPreview"))
+    {
+        return CaptureWidgetPreview(TransactionId, Payload, OutStatusCode);
+    }
+
+    if (Command == TEXT("compareUiImages"))
+    {
+        return CompareUiImages(TransactionId, Payload, OutStatusCode);
     }
 
     if (Command == TEXT("inspectBlueprint"))
@@ -1405,6 +1914,309 @@ TSharedRef<FJsonObject> FMWBWidgetBlueprintService::FinalizeWidget(
         }
     }
 
+    OutStatusCode = EHttpServerResponseCodes::Ok;
+    return FMWBJson::Success(TransactionId, Result);
+}
+
+TSharedRef<FJsonObject> FMWBWidgetBlueprintService::CaptureWidgetPreview(
+    const FString& TransactionId,
+    const TSharedPtr<FJsonObject>& Payload,
+    EHttpServerResponseCodes& OutStatusCode)
+{
+    FString AssetPath;
+    FString CaptureId;
+    FString Error;
+    if (!FMWBJson::GetRequiredString(Payload, TEXT("assetPath"), AssetPath, Error)
+        || !FMWBJson::GetRequiredString(Payload, TEXT("captureId"), CaptureId, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("INVALID_REQUEST"), Error);
+    }
+
+    if (!IsAllowedWidgetBlueprintPath(AssetPath))
+    {
+        OutStatusCode = EHttpServerResponseCodes::Forbidden;
+        return Failure(TransactionId, TEXT("ASSET_PATH_NOT_ALLOWED"), FString::Printf(TEXT("assetPath must be under %s."), AllowedWidgetBlueprintPathPrefix));
+    }
+
+    if (!IsSafeFileStem(CaptureId))
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("INVALID_CAPTURE_ID"), TEXT("captureId must be 1-96 letters, numbers, underscores, or hyphens."));
+    }
+
+    UWidgetBlueprint* WidgetBlueprint = LoadWidgetBlueprint(AssetPath);
+    if (!WidgetBlueprint || !WidgetBlueprint->GeneratedClass)
+    {
+        OutStatusCode = EHttpServerResponseCodes::NotFound;
+        return Failure(TransactionId, TEXT("WIDGET_BLUEPRINT_NOT_FOUND"), FString::Printf(TEXT("No compiled UWidgetBlueprint was found at '%s'."), *AssetPath));
+    }
+
+    const FString OutputDirectory = PreviewDirectory();
+    const FString OutputPath = NormalizeAbsolutePath(OutputDirectory / (CaptureId + TEXT(".png")));
+    if (!IsPathWithin(OutputPath, OutputDirectory))
+    {
+        OutStatusCode = EHttpServerResponseCodes::Forbidden;
+        return Failure(TransactionId, TEXT("OUTPUT_PATH_NOT_ALLOWED"), TEXT("Preview output must stay inside Saved/WidgetBridge/Previews."));
+    }
+
+    if (!IFileManager::Get().MakeDirectory(*OutputDirectory, true))
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PREVIEW_DIRECTORY_CREATE_FAILED"), FString::Printf(TEXT("Could not create '%s'."), *OutputDirectory));
+    }
+
+    FWidgetBlueprintEditorUtils::FCreateWidgetFromBlueprintParams Params;
+    Params.FlagsToApply = EWidgetDesignFlags::Designing;
+    UUserWidget* PreviewWidget = FWidgetBlueprintEditorUtils::CreateUserWidgetFromBlueprint(GetTransientPackage(), WidgetBlueprint, Params);
+    if (!PreviewWidget)
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PREVIEW_WIDGET_CREATE_FAILED"), TEXT("Could not create a design-time widget preview."));
+    }
+
+    PreviewWidget->AddToRoot();
+    UTextureRenderTarget2D* RenderTarget = FWidgetRenderer::CreateTargetFor(FVector2D(PreviewWidth, PreviewHeight), TF_Bilinear, true);
+    if (RenderTarget)
+    {
+        RenderTarget->AddToRoot();
+    }
+
+    bool bCaptured = false;
+    TArray<FColor> Pixels;
+    if (RenderTarget)
+    {
+        FWidgetRenderer Renderer(true);
+        Renderer.DrawWidget(RenderTarget, PreviewWidget->TakeWidget(), FVector2D(PreviewWidth, PreviewHeight), 0.0f);
+        FlushRenderingCommands();
+        bCaptured = RenderTarget->GameThread_GetRenderTargetResource()->ReadPixels(Pixels);
+    }
+
+    if (RenderTarget)
+    {
+        RenderTarget->RemoveFromRoot();
+    }
+    PreviewWidget->RemoveFromRoot();
+    FWidgetBlueprintEditorUtils::DestroyUserWidget(PreviewWidget);
+
+    if (!bCaptured || Pixels.Num() != PreviewWidth * PreviewHeight)
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PREVIEW_CAPTURE_FAILED"), TEXT("Could not read the rendered Widget preview pixels."));
+    }
+
+    if (!SavePng(Pixels, PreviewWidth, PreviewHeight, OutputPath, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PREVIEW_PNG_WRITE_FAILED"), Error);
+    }
+
+    TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetStringField(TEXT("assetPath"), AssetPath);
+    Result->SetStringField(TEXT("captureId"), CaptureId);
+    Result->SetStringField(TEXT("outputPath"), OutputPath);
+    Result->SetNumberField(TEXT("width"), PreviewWidth);
+    Result->SetNumberField(TEXT("height"), PreviewHeight);
+    Result->SetNumberField(TEXT("bytes"), IFileManager::Get().FileSize(*OutputPath));
+    OutStatusCode = EHttpServerResponseCodes::Ok;
+    return FMWBJson::Success(TransactionId, Result);
+}
+
+TSharedRef<FJsonObject> FMWBWidgetBlueprintService::CompareUiImages(
+    const FString& TransactionId,
+    const TSharedPtr<FJsonObject>& Payload,
+    EHttpServerResponseCodes& OutStatusCode)
+{
+    FString ReferencePath;
+    FString CandidatePath;
+    FString ComparisonId;
+    FString Error;
+    if (!FMWBJson::GetRequiredString(Payload, TEXT("referencePath"), ReferencePath, Error)
+        || !FMWBJson::GetRequiredString(Payload, TEXT("candidatePath"), CandidatePath, Error)
+        || !FMWBJson::GetRequiredString(Payload, TEXT("comparisonId"), ComparisonId, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("INVALID_REQUEST"), Error);
+    }
+
+    double PixelThreshold = 12.0;
+    Payload->TryGetNumberField(TEXT("pixelThreshold"), PixelThreshold);
+    if (!IsSafeFileStem(ComparisonId) || PixelThreshold < 0.0 || PixelThreshold > 255.0)
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("INVALID_COMPARE_INPUT"), TEXT("comparisonId must be safe and pixelThreshold must be between 0 and 255."));
+    }
+
+    ReferencePath = ResolveProjectPath(ReferencePath);
+    CandidatePath = ResolveProjectPath(CandidatePath);
+    const FString OutputDirectory = PreviewDirectory();
+    if (!IsPngPath(ReferencePath) || !IsPngPath(CandidatePath)
+        || !IsPathWithin(ReferencePath, FPaths::ProjectDir())
+        || !IsPathWithin(CandidatePath, OutputDirectory))
+    {
+        OutStatusCode = EHttpServerResponseCodes::Forbidden;
+        return Failure(TransactionId, TEXT("IMAGE_PATH_NOT_ALLOWED"), TEXT("referencePath must be a project PNG and candidatePath must be a PNG in Saved/WidgetBridge/Previews."));
+    }
+
+    TArray<FColor> ReferencePixels;
+    TArray<FColor> CandidatePixels;
+    int32 ReferenceWidth = 0;
+    int32 ReferenceHeight = 0;
+    int32 CandidateWidth = 0;
+    int32 CandidateHeight = 0;
+    if (!LoadPng(ReferencePath, ReferencePixels, ReferenceWidth, ReferenceHeight, Error)
+        || !LoadPng(CandidatePath, CandidatePixels, CandidateWidth, CandidateHeight, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("IMAGE_LOAD_FAILED"), Error);
+    }
+
+    if (ReferenceWidth != CandidateWidth || ReferenceHeight != CandidateHeight)
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("IMAGE_DIMENSIONS_MISMATCH"), FString::Printf(TEXT("Reference is %dx%d while candidate is %dx%d."), ReferenceWidth, ReferenceHeight, CandidateWidth, CandidateHeight));
+    }
+
+    TArray<FColor> Heatmap;
+    Heatmap.SetNumUninitialized(ReferencePixels.Num());
+    int64 MismatchedPixels = 0;
+    int64 TotalChannelError = 0;
+    const int32 Threshold = FMath::RoundToInt(PixelThreshold);
+    for (int32 Index = 0; Index < ReferencePixels.Num(); ++Index)
+    {
+        const FColor& Reference = ReferencePixels[Index];
+        const FColor& Candidate = CandidatePixels[Index];
+        const int32 RedError = FMath::Abs(static_cast<int32>(Reference.R) - static_cast<int32>(Candidate.R));
+        const int32 GreenError = FMath::Abs(static_cast<int32>(Reference.G) - static_cast<int32>(Candidate.G));
+        const int32 BlueError = FMath::Abs(static_cast<int32>(Reference.B) - static_cast<int32>(Candidate.B));
+        const int32 AlphaError = FMath::Abs(static_cast<int32>(Reference.A) - static_cast<int32>(Candidate.A));
+        const int32 MaxError = FMath::Max(FMath::Max(RedError, GreenError), FMath::Max(BlueError, AlphaError));
+        TotalChannelError += RedError + GreenError + BlueError + AlphaError;
+        if (MaxError > Threshold)
+        {
+            ++MismatchedPixels;
+        }
+        Heatmap[Index] = FColor(FMath::Min(255, RedError * 4), FMath::Min(255, GreenError * 4), FMath::Min(255, BlueError * 4), 255);
+    }
+
+    if (!IFileManager::Get().MakeDirectory(*OutputDirectory, true))
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PREVIEW_DIRECTORY_CREATE_FAILED"), FString::Printf(TEXT("Could not create '%s'."), *OutputDirectory));
+    }
+    const FString HeatmapPath = NormalizeAbsolutePath(OutputDirectory / (ComparisonId + TEXT("-heatmap.png")));
+    if (!IsPathWithin(HeatmapPath, OutputDirectory) || !SavePng(Heatmap, ReferenceWidth, ReferenceHeight, HeatmapPath, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("HEATMAP_WRITE_FAILED"), Error.IsEmpty() ? TEXT("Could not write comparison heatmap.") : Error);
+    }
+
+    const int64 PixelCount = ReferencePixels.Num();
+    const double MismatchRatio = PixelCount == 0 ? 0.0 : static_cast<double>(MismatchedPixels) / static_cast<double>(PixelCount);
+    const double MeanAbsoluteChannelError = PixelCount == 0 ? 0.0 : static_cast<double>(TotalChannelError) / static_cast<double>(PixelCount * 4);
+    TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetStringField(TEXT("referencePath"), ReferencePath);
+    Result->SetStringField(TEXT("candidatePath"), CandidatePath);
+    Result->SetStringField(TEXT("heatmapPath"), HeatmapPath);
+    Result->SetNumberField(TEXT("width"), ReferenceWidth);
+    Result->SetNumberField(TEXT("height"), ReferenceHeight);
+    Result->SetNumberField(TEXT("pixelThreshold"), Threshold);
+    Result->SetNumberField(TEXT("mismatchedPixels"), MismatchedPixels);
+    Result->SetNumberField(TEXT("mismatchRatio"), MismatchRatio);
+    Result->SetNumberField(TEXT("meanAbsoluteChannelError"), MeanAbsoluteChannelError);
+    OutStatusCode = EHttpServerResponseCodes::Ok;
+    return FMWBJson::Success(TransactionId, Result);
+}
+
+TSharedRef<FJsonObject> FMWBWidgetBlueprintService::ImportUiPng(
+    const FString& TransactionId,
+    const TSharedPtr<FJsonObject>& Payload,
+    EHttpServerResponseCodes& OutStatusCode)
+{
+    FString AssetPath;
+    FString RequestedSourcePath;
+    FString Error;
+    if (!FMWBJson::GetRequiredString(Payload, TEXT("assetPath"), AssetPath, Error)
+        || !FMWBJson::GetRequiredString(Payload, TEXT("sourceFilePath"), RequestedSourcePath, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("INVALID_REQUEST"), Error);
+    }
+
+    if (!IsAllowedWidgetBlueprintPath(AssetPath))
+    {
+        OutStatusCode = EHttpServerResponseCodes::Forbidden;
+        return Failure(TransactionId, TEXT("ASSET_PATH_NOT_ALLOWED"), TEXT("assetPath must be under /Game/MistyPlanet/UI/."));
+    }
+
+    FString SourcePath;
+    if (!TryResolveUiImportSource(RequestedSourcePath, SourcePath))
+    {
+        OutStatusCode = EHttpServerResponseCodes::Forbidden;
+        return Failure(
+            TransactionId,
+            TEXT("IMPORT_SOURCE_NOT_ALLOWED"),
+            TEXT("sourceFilePath must be an existing .png under .codex-local/, .superpowers/, or Content/MistyPlanet/UI/SourceArt/."));
+    }
+
+    FString DestinationPath;
+    FString DestinationName;
+    if (!SplitAssetPath(AssetPath, DestinationPath, DestinationName, Error))
+    {
+        OutStatusCode = EHttpServerResponseCodes::BadRequest;
+        return Failure(TransactionId, TEXT("INVALID_ASSET_PATH"), Error);
+    }
+
+    bool bReplaceExisting = false;
+    Payload->TryGetBoolField(TEXT("replaceExisting"), bReplaceExisting);
+    const FString ExistingObjectPath = ToObjectPath(AssetPath);
+    if (!bReplaceExisting && LoadObject<UObject>(nullptr, *ExistingObjectPath))
+    {
+        OutStatusCode = EHttpServerResponseCodes::Conflict;
+        return Failure(TransactionId, TEXT("ASSET_ALREADY_EXISTS"), FString::Printf(TEXT("'%s' already exists; set replaceExisting to true to replace it."), *AssetPath));
+    }
+
+    UAssetImportTask* ImportTask = NewObject<UAssetImportTask>();
+    ImportTask->Filename = SourcePath;
+    ImportTask->DestinationPath = DestinationPath;
+    ImportTask->DestinationName = DestinationName;
+    ImportTask->bAutomated = true;
+    ImportTask->bSave = true;
+    ImportTask->bReplaceExisting = bReplaceExisting;
+    ImportTask->bReplaceExistingSettings = false;
+
+    TArray<UAssetImportTask*> Tasks;
+    Tasks.Add(ImportTask);
+    FAssetToolsModule::GetModule().Get().ImportAssetTasks(Tasks);
+
+    const TArray<UObject*>& ImportedObjects = ImportTask->GetObjects();
+    UObject* ImportedAsset = ImportedObjects.IsEmpty() ? nullptr : ImportedObjects[0];
+    UTexture2D* ImportedTexture = Cast<UTexture2D>(ImportedAsset);
+    if (!ImportedTexture)
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PNG_IMPORT_FAILED"), FString::Printf(TEXT("Could not import '%s' as a UI texture."), *SourcePath));
+    }
+
+    // UI reference PNGs are authored in sRGB.  Explicitly preserve that
+    // interpretation after automated import/reimport so Slate does not treat
+    // browser-encoded pixels as linear color values.
+    ImportedTexture->SRGB = true;
+    ImportedTexture->LODGroup = TEXTUREGROUP_UI;
+    ImportedTexture->PostEditChange();
+    ImportedTexture->MarkPackageDirty();
+    TArray<UPackage*> TexturePackagesToSave;
+    TexturePackagesToSave.Add(ImportedTexture->GetOutermost());
+    if (!UEditorLoadingAndSavingUtils::SavePackages(TexturePackagesToSave, false))
+    {
+        OutStatusCode = EHttpServerResponseCodes::ServerError;
+        return Failure(TransactionId, TEXT("PNG_IMPORT_SAVE_FAILED"), FString::Printf(TEXT("Could not save imported UI texture '%s'."), *ImportedTexture->GetPathName()));
+    }
+
+    TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetStringField(TEXT("assetPath"), ImportedTexture->GetPathName());
+    Result->SetStringField(TEXT("sourceFilePath"), SourcePath);
+    Result->SetBoolField(TEXT("replacedExisting"), bReplaceExisting);
     OutStatusCode = EHttpServerResponseCodes::Ok;
     return FMWBJson::Success(TransactionId, Result);
 }

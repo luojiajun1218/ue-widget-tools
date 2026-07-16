@@ -58,7 +58,10 @@ function generateCpp(input: ParsedGenerateWidgetCppInput): string {
     ""
   ]);
 
-  return [`#include "${headerFileName(input.className)}"`, "", ...definitions].join("\n");
+  // Generated headers live under the module's public UI/Generated directory;
+  // use the module-relative include so a private generated implementation can
+  // be compiled by UBT without relying on a sibling-header search path.
+  return [`#include "UI/Generated/${headerFileName(input.className)}"`, "", ...definitions].join("\n");
 }
 
 function headerFileName(className: string): string {

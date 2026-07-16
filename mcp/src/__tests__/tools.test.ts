@@ -34,6 +34,63 @@ describe("MCP tool dispatch", () => {
     });
   });
 
+  it("forwards a deterministic UMG preview capture to the bridge", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true, command: "captureWidgetPreview" })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.capture_widget_preview",
+      {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
+        captureId: "settings-default",
+        transactionId: "capture-test"
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).toHaveBeenCalledWith({
+      command: "captureWidgetPreview",
+      transactionId: "capture-test",
+      payload: {
+        assetPath: "/Game/MistyPlanet/UI/WBP_Setting",
+        captureId: "settings-default"
+      }
+    });
+  });
+
+  it("forwards a UI image comparison with the default threshold", async () => {
+    const client = {
+      getStatus: vi.fn().mockResolvedValue({ ok: true }),
+      sendCommand: vi.fn().mockResolvedValue({ ok: true, command: "compareUiImages" })
+    };
+
+    const result = await dispatchTool(
+      "ue.ui.compare_ui_images",
+      {
+        referencePath: ".superpowers/brainstorm/settings-web-20260715/review-v2b.png",
+        candidatePath: "Saved/WidgetBridge/Previews/settings-default.png",
+        comparisonId: "settings-default-compare",
+        transactionId: "compare-test"
+      },
+      client
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(client.sendCommand).toHaveBeenCalledWith({
+      command: "compareUiImages",
+      transactionId: "compare-test",
+      payload: {
+        referencePath: ".superpowers/brainstorm/settings-web-20260715/review-v2b.png",
+        candidatePath: "Saved/WidgetBridge/Previews/settings-default.png",
+        comparisonId: "settings-default-compare",
+        pixelThreshold: 12
+      }
+    });
+  });
+
   it("forwards checkbox binding using the UE plugin command spelling", async () => {
     const client = {
       getStatus: vi.fn().mockResolvedValue({ ok: true }),

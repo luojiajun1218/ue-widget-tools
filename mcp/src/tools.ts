@@ -11,6 +11,7 @@ import { buildProjectCpp } from "./projectBuilder.js";
 import { closeEditor, openEditor, rebuildCppWithEditorRestart } from "./ueLifecycle.js";
 import { validateWidgetLayoutQuality } from "./layoutQuality.js";
 import { validateWidgetReview } from "./widgetReviewQuality.js";
+import { settingsCalibrationStyleContract } from "./settingsCalibrationContract.js";
 import {
   bridgeCommandNames,
   isToolName,
@@ -343,6 +344,82 @@ export const mcpTools: Tool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
   },
   {
+    name: "ue.ui.get_style_contract",
+    description:
+      "Return the native UMG style/fidelity contract for the approved Misty calibration settings screen without modifying assets.",
+    inputSchema: objectSchema(
+      {
+        id: { type: "string", enum: ["misty-calibration"], description: "Named visual contract." }
+      },
+      []
+    ),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.capture_widget_preview",
+    description:
+      "Render a UI Widget Blueprint into a deterministic 1920x1080 PNG under Saved/WidgetBridge/Previews without modifying the asset.",
+    inputSchema: objectSchema(
+      {
+        assetPath: assetPathProperty,
+        captureId: {
+          type: "string",
+          pattern: "^[A-Za-z0-9_-]{1,96}$",
+          description: "Safe output filename stem; the PNG is written beneath Saved/WidgetBridge/Previews."
+        },
+        transactionId: transactionIdProperty
+      },
+      ["assetPath", "captureId"]
+    ),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.compare_ui_images",
+    description:
+      "Compare a project-local reference PNG with a captured Saved/WidgetBridge/Previews PNG and write a difference heatmap under Saved/WidgetBridge/Previews.",
+    inputSchema: objectSchema(
+      {
+        referencePath: { type: "string", description: "Reference PNG inside the current project directory." },
+        candidatePath: { type: "string", description: "Captured PNG inside Saved/WidgetBridge/Previews." },
+        comparisonId: {
+          type: "string",
+          pattern: "^[A-Za-z0-9_-]{1,96}$",
+          description: "Safe heatmap filename stem."
+        },
+        pixelThreshold: {
+          type: "number",
+          minimum: 0,
+          maximum: 255,
+          description: "Per-channel difference threshold; defaults to 12."
+        },
+        transactionId: transactionIdProperty
+      },
+      ["referencePath", "candidatePath", "comparisonId"]
+    ),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+  },
+  {
+    name: "ue.ui.import_ui_png",
+    description:
+      "Import a project-local PNG into /Game/MistyPlanet/UI/ as a Texture2D for an approved UMG visual reference or brush.",
+    inputSchema: objectSchema(
+      {
+        assetPath: {
+          type: "string",
+          description: "Texture asset path under /Game/MistyPlanet/UI/."
+        },
+        sourceFilePath: {
+          type: "string",
+          description: "PNG inside .codex-local, .superpowers, or Content/MistyPlanet/UI/SourceArt."
+        },
+        replaceExisting: { type: "boolean", description: "Replace an existing UI texture at the destination." },
+        transactionId: transactionIdProperty
+      },
+      ["assetPath", "sourceFilePath"]
+    ),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+  },
+  {
     name: "ue.ui.generate_widget_cpp",
     description: "Generate pure UUserWidget subclass C++ header and source text without writing files.",
     inputSchema: objectSchema(
@@ -504,6 +581,8 @@ export async function dispatchTool(
     const result =
       name === "ue.project.status"
         ? await client.getStatus()
+        : name === "ue.ui.get_style_contract"
+          ? settingsCalibrationStyleContract
         : name === "ue.ui.generate_widget_cpp"
           ? generateWidgetCpp(input as GenerateWidgetCppInput)
           : name === "ue.ui.validate_widget_layout"

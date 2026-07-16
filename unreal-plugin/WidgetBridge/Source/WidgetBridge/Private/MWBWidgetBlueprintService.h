@@ -47,6 +47,21 @@ private:
         const TSharedPtr<FJsonObject>& Payload,
         EHttpServerResponseCodes& OutStatusCode);
 
+    static TSharedRef<FJsonObject> CaptureWidgetPreview(
+        const FString& TransactionId,
+        const TSharedPtr<FJsonObject>& Payload,
+        EHttpServerResponseCodes& OutStatusCode);
+
+    static TSharedRef<FJsonObject> CompareUiImages(
+        const FString& TransactionId,
+        const TSharedPtr<FJsonObject>& Payload,
+        EHttpServerResponseCodes& OutStatusCode);
+
+    static TSharedRef<FJsonObject> ImportUiPng(
+        const FString& TransactionId,
+        const TSharedPtr<FJsonObject>& Payload,
+        EHttpServerResponseCodes& OutStatusCode);
+
     static TSharedRef<FJsonObject> Failure(
         const FString& TransactionId,
         const FString& Code,

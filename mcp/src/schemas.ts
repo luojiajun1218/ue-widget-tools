@@ -24,6 +24,12 @@ const cppIdentifierSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
 
 export const projectStatusSchema = z.object({}).strict();
 
+export const getUiStyleContractSchema = z
+  .object({
+    id: z.enum(["misty-calibration"]).default("misty-calibration")
+  })
+  .strict();
+
 export const inspectWidgetTreeSchema = z
   .object({
     assetPath: uiAssetPathSchema,
@@ -186,6 +192,37 @@ export const finalizeWidgetSchema = z
   })
   .strict();
 
+export const captureWidgetPreviewSchema = z
+  .object({
+    assetPath: uiAssetPathSchema,
+    captureId: z.string().regex(/^[A-Za-z0-9_-]{1,96}$/, {
+      message: "captureId must contain only letters, numbers, underscores, or hyphens"
+    }),
+    transactionId: transactionIdSchema
+  })
+  .strict();
+
+export const compareUiImagesSchema = z
+  .object({
+    referencePath: z.string().min(1),
+    candidatePath: z.string().min(1),
+    comparisonId: z.string().regex(/^[A-Za-z0-9_-]{1,96}$/, {
+      message: "comparisonId must contain only letters, numbers, underscores, or hyphens"
+    }),
+    pixelThreshold: z.number().min(0).max(255).default(12),
+    transactionId: transactionIdSchema
+  })
+  .strict();
+
+export const importUiPngSchema = z
+  .object({
+    assetPath: uiAssetPathSchema,
+    sourceFilePath: z.string().min(1),
+    replaceExisting: z.boolean().default(false),
+    transactionId: transactionIdSchema
+  })
+  .strict();
+
 export const buildCppSchema = z
   .object({
     projectRoot: z.string().min(1).default("../.."),
@@ -277,6 +314,7 @@ export type ApplyWidgetDslInput = z.output<typeof applyWidgetDslSchema>;
 
 export const toolInputSchemas = {
   "ue.project.status": projectStatusSchema,
+  "ue.ui.get_style_contract": getUiStyleContractSchema,
   "ue.ui.inspect_widget_tree": inspectWidgetTreeSchema,
   "ue.ui.create_widget_blueprint": createWidgetBlueprintSchema,
   "ue.ui.set_widget_parent_class": setWidgetParentClassSchema,
@@ -292,6 +330,9 @@ export const toolInputSchemas = {
   "ue.ui.bind_combobox_selection_changed_to_function": bindComboboxSelectionChangedToFunctionSchema,
   "ue.ui.compile_widget": compileWidgetSchema,
   "ue.ui.finalize_widget": finalizeWidgetSchema,
+  "ue.ui.capture_widget_preview": captureWidgetPreviewSchema,
+  "ue.ui.compare_ui_images": compareUiImagesSchema,
+  "ue.ui.import_ui_png": importUiPngSchema,
   "ue.ui.generate_widget_cpp": generateWidgetCppSchema,
   "ue.ui.write_widget_cpp": writeWidgetCppSchema,
   "ue.project.build_cpp": buildCppSchema,
@@ -314,6 +355,9 @@ export const bridgeCommandNames = {
   "ue.ui.bind_combobox_selection_changed_to_function": "bindComboBoxSelectionChangedToFunction",
   "ue.ui.compile_widget": "compileWidget",
   "ue.ui.finalize_widget": "finalizeWidget",
+  "ue.ui.capture_widget_preview": "captureWidgetPreview",
+  "ue.ui.compare_ui_images": "compareUiImages",
+  "ue.ui.import_ui_png": "importUiPng",
   "ue.blueprint.inspect": "inspectBlueprint"
 } as const satisfies Partial<Record<ToolName, string>>;
 

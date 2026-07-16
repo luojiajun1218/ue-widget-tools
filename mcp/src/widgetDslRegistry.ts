@@ -40,6 +40,29 @@ const commonStyleProps = {
   backgroundColor: prop("color", "Theme color key or literal color.")
 };
 
+// These map directly to properties already accepted by the WidgetBridge layout
+// payload.  Keep them explicit: a rich visual contract must not silently drop
+// a style that is needed to reproduce an approved web baseline.
+const nativeVisualProps = {
+  color: prop("color", "Foreground/tint color."),
+  brushColor: prop("color", "Native Slate brush tint."),
+  shadowColor: prop("color", "Text shadow color."),
+  shadowOffset: prop("array", "Text shadow x/y offset."),
+  justification: prop("enum", "Text justification.", ["Left", "Center", "Right"]),
+  opacity: prop("number", "Render opacity from 0 to 1."),
+  zIndex: prop("number", "Canvas z-order for absolute layers."),
+  anchors: prop("any", "Canvas anchor object with minimum/maximum pairs."),
+  position: prop("array", "Canvas position x/y."),
+  canvasSize: prop("array", "Canvas size x/y (kept distinct from component size aliases)."),
+  minValue: prop("number", "Native slider minimum."),
+  maxValue: prop("number", "Native slider maximum."),
+  barColor: prop("color", "Slider bar tint contract."),
+  handleColor: prop("color", "Slider handle tint contract."),
+  activeColor: prop("color", "Active control tint contract."),
+  inactiveColor: prop("color", "Inactive control tint contract."),
+  asset: prop("string", "Native UMG brush/material asset path.")
+};
+
 export const componentRegistry = {
   Widget: {
     name: "Widget",
@@ -60,6 +83,13 @@ export const componentRegistry = {
       secondary: prop("color", "Secondary accent color token."),
       text: prop("color", "Primary text color token."),
       muted: prop("color", "Muted text color token."),
+      void: prop("color", "Near-black backdrop token."),
+      surface: prop("color", "Primary calibrated panel token."),
+      recess: prop("color", "Recessed control token."),
+      mint: prop("color", "Calibration accent token."),
+      soft: prop("color", "Secondary telemetry text token."),
+      danger: prop("color", "Warning/action token."),
+      preset: prop("enum", "Named native visual contract.", ["mistyCalibration"]),
       spacing: prop("number", "Base spacing unit.")
     }
   },
@@ -79,7 +109,8 @@ export const componentRegistry = {
     description: "Frame or panel with background and spacing.",
     props: {
       ...commonIdentityProps,
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Panel: {
@@ -88,7 +119,8 @@ export const componentRegistry = {
     description: "Semantic content panel alias.",
     props: {
       ...commonIdentityProps,
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   VerticalBox: {
@@ -99,7 +131,8 @@ export const componentRegistry = {
       ...commonIdentityProps,
       size: prop("number", "Gap alias."),
       gap: prop("number", "Spacing between children."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   HorizontalBox: {
@@ -110,7 +143,8 @@ export const componentRegistry = {
       ...commonIdentityProps,
       size: prop("number", "Gap alias."),
       gap: prop("number", "Spacing between children."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Tabs: {
@@ -123,7 +157,8 @@ export const componentRegistry = {
       buttonHeight: prop("number", "Height of each tab button."),
       sidebarGap: prop("number", "Spacing between tab buttons."),
       contentPadding: prop("array", "Padding between buttons and content page."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Tab: {
@@ -148,7 +183,8 @@ export const componentRegistry = {
       labelWidth: prop("number", "Width of the label column."),
       controlWidth: prop("number", "Width of the control column."),
       controlFill: prop("boolean", "Whether the control column fills remaining space."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Text: {
@@ -164,7 +200,8 @@ export const componentRegistry = {
       muted: prop("boolean", "Muted text style shortcut."),
       size: prop("number", "Font size alias."),
       fontSize: prop("number", "Font size."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Button: {
@@ -177,7 +214,8 @@ export const componentRegistry = {
       value: prop("string", "Button label alias."),
       label: prop("string", "Button label alias."),
       variant: prop("enum", "Button visual variant.", ["primary", "secondary", "ghost"]),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Slider: {
@@ -187,7 +225,8 @@ export const componentRegistry = {
     props: {
       ...commonIdentityProps,
       value: prop("number", "Initial normalized value."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Toggle: {
@@ -197,7 +236,8 @@ export const componentRegistry = {
     props: {
       ...commonIdentityProps,
       checked: prop("boolean", "Initial checked state."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Select: {
@@ -207,7 +247,8 @@ export const componentRegistry = {
     props: {
       ...commonIdentityProps,
       options: prop("array", "String option list."),
-      ...commonStyleProps
+      ...commonStyleProps,
+      ...nativeVisualProps
     }
   },
   Spacer: {
@@ -249,6 +290,7 @@ export const componentRegistry = {
       ...commonIdentityProps,
       src: prop("string", "Texture or brush asset reference."),
       source: prop("string", "Texture or brush asset reference."),
+      previewSrc: prop("string", "Local image URL used only by the browser review console."),
       tint: prop("color", "Image tint."),
       ...commonStyleProps
     }
@@ -360,6 +402,54 @@ export const componentRegistry = {
       zIndex: prop("number", "Layer order."),
       ...commonStyleProps
     }
+  },
+  CalibrationShell: {
+    name: "CalibrationShell",
+    status: "supported",
+    description: "Fullscreen, layered system-calibration shell; compiles to native UMG Overlay.",
+    props: { ...commonIdentityProps, ...commonStyleProps, ...nativeVisualProps }
+  },
+  PanelFrame: {
+    name: "PanelFrame",
+    status: "supported",
+    description: "Border frame for calibrated panels, with optional native brush asset.",
+    props: { ...commonIdentityProps, ...commonStyleProps, ...nativeVisualProps }
+  },
+  ModuleRail: {
+    name: "ModuleRail",
+    status: "supported",
+    description: "Vertical settings module rail; compiles to native VerticalBox.",
+    props: { ...commonIdentityProps, gap: prop("number", "Item gap."), ...commonStyleProps, ...nativeVisualProps }
+  },
+  TelemetryDeck: {
+    name: "TelemetryDeck",
+    status: "supported",
+    description: "Styled live telemetry panel; compiles to native Border.",
+    props: { ...commonIdentityProps, ...commonStyleProps, ...nativeVisualProps }
+  },
+  SignalMeter: {
+    name: "SignalMeter",
+    status: "supported",
+    description: "Native ProgressBar semantic for live signal strength.",
+    props: { ...commonIdentityProps, value: prop("number", "Normalized signal value."), ...commonStyleProps, ...nativeVisualProps }
+  },
+  Readout: {
+    name: "Readout",
+    status: "supported",
+    description: "Monospace-style telemetry text; compiles to native TextBlock.",
+    props: { ...commonIdentityProps, text: prop("string", "Readout text."), value: prop("string", "Readout text alias."), fontSize: prop("number", "Font size."), ...commonStyleProps, ...nativeVisualProps }
+  },
+  SectionLabel: {
+    name: "SectionLabel",
+    status: "supported",
+    description: "Compact section heading; compiles to native TextBlock.",
+    props: { ...commonIdentityProps, text: prop("string", "Label text."), value: prop("string", "Label text alias."), ...commonStyleProps, ...nativeVisualProps }
+  },
+  StatusBadge: {
+    name: "StatusBadge",
+    status: "supported",
+    description: "Compact online/status badge; compiles to native Border with text child.",
+    props: { ...commonIdentityProps, text: prop("string", "Badge text."), value: prop("string", "Badge text alias."), ...commonStyleProps, ...nativeVisualProps }
   }
 } as const satisfies Record<string, WidgetDslComponentSpec>;
 

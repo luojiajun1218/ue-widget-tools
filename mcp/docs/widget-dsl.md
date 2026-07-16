@@ -53,6 +53,40 @@ The component registry in `src/widgetDslRegistry.ts` is the diagnostic source of
 | `Toggle` | `CheckBox` | `checked` controls initial state. |
 | `Select` | `ComboBoxString` | `options` is an array of strings. |
 
+## Misty Calibration Style Contract
+
+For a fidelity-sync of the approved system-calibration screen, start the
+document with `Theme preset="mistyCalibration"`. The preset exposes the native
+UMG tokens `void`, `surface`, `recess`, `mint`, `soft`, `danger`, `text`, and
+`panel`; it resolves to the approved black/teal palette rather than browser
+CSS. Query `ue.ui.get_style_contract` for the exact 1920×1080 grid, required
+screen landmarks, and capture/diff artifacts.
+
+The following semantic components are supported and always compile into
+standard bridge-supported UMG widgets. They are intent labels, not custom
+runtime widget classes:
+
+| DSL component | Native UMG output | Use |
+| --- | --- | --- |
+| `CalibrationShell` | `Overlay` | Fullscreen backdrop/grid/scanline layers. |
+| `PanelFrame`, `TelemetryDeck` | `Border` | Framed center and telemetry panels. |
+| `ModuleRail` | `VerticalBox` | Numbered left module rail. |
+| `SignalMeter` | `ProgressBar` | Live signal strength. |
+| `Readout`, `SectionLabel` | `TextBlock` | Monospace-like telemetry and compact section labels. |
+| `StatusBadge` | `Border` + `TextBlock` | Online/status indicator. |
+
+All visual components may use native bridge props `color`, `brushColor`,
+`shadowColor`, `shadowOffset`, `justification`, `opacity`, `zIndex`, `anchors`,
+`position`, `canvasSize`, and `asset`. Sliders additionally accept `minValue`,
+`maxValue`, `barColor`, and `handleColor`; checkboxes/selects accept the common
+active/inactive color contract. These properties are retained in the UMG
+layout payload; no CSS-only effect is silently substituted.
+
+For a web-to-UMG sync, the DSL review is not the final visual proof. Capture
+the approved web baseline and the UMG candidate at the exact same viewport and
+default state, then use `ue.ui.compare_ui_images`. Inspect its overlay and
+heatmap before treating the screen as complete.
+
 ## Conversion Policy
 
 Conversion is rule-first:
